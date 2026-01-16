@@ -14,21 +14,14 @@ import nest_asyncio
 import tkinter as tk
 from tkinter import filedialog
 
-
-# ✅ FIXED: Set Playwright browser path BEFORE importing playwright
-# This must be done before any playwright imports
 if getattr(sys, 'frozen', False):
-    # Running as compiled .exe
-    # Look for bundled browsers in the same folder as the .exe
     exe_dir = os.path.dirname(sys.executable)
     browserpath = os.path.join(exe_dir, "ms-playwright")
     
-    # Check if browsers are actually in there (not just an empty folder)
     import glob
     if os.path.exists(browserpath):
         chromium_found = glob.glob(os.path.join(browserpath, "chromium*"))
         
-        # ✅ FIX: Handle double ms-playwright folder (when user unzips into a folder)
         if not chromium_found:
             nested_path = os.path.join(browserpath, "ms-playwright")
             if os.path.exists(nested_path):
@@ -42,12 +35,10 @@ if getattr(sys, 'frozen', False):
             print(f"✅ Using bundled Playwright browsers: {browserpath}")
             print(f"   Found: {', '.join([os.path.basename(p) for p in chromium_found])}")
         else:
-            # Fallback to AppData if no chromium found
             print(f"⚠️  No Chromium browsers found in {browserpath}")
             browserpath = os.path.join(os.path.expanduser("~"), "AppData", "Local", "ms-playwright")
             print(f"   Trying AppData: {browserpath}")
     else:
-        # Folder doesn't exist at all
         browserpath = os.path.join(os.path.expanduser("~"), "AppData", "Local", "ms-playwright")
         print(f"⚠️  Bundled browsers folder not found, using AppData: {browserpath}")
     
@@ -56,7 +47,6 @@ if getattr(sys, 'frozen', False):
 
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page
 
-# Important : appeler une seule fois au début
 nest_asyncio.apply()
 
 class ShopifyGraphQLUploader:
@@ -72,7 +62,6 @@ class ShopifyGraphQLUploader:
         with open(config_path, 'r', encoding='utf-8') as f:
             self.config = json.load(f)
         
-        # Configure verbose/debug modes
         debug_mode = self.config.get('debug_mode', False)
         uploader_verbose = self.config.get('uploader_verbose', False)
         digital_verbose = self.config.get('digital_downloads_verbose', False)
@@ -94,12 +83,9 @@ class ShopifyGraphQLUploader:
         self.store_url = self.config['store_url'].replace('https://', '').replace('http://', '').rstrip('/')
         self.access_token = self.config.get('access_token', '')
         
-        # Intelligent beats_folder selection with fallback
         if beats_folder is not None:
-            # Override provided (e.g., by single_upload.py) - use it directly
             self.download_folder = beats_folder
         else:
-            # Normal mode - determine beats folder intelligently
             self.download_folder = self._get_beats_folder()
         
         self.apiurl = f"https://{self.store_url}/admin/api/2024-10/graphql.json"
@@ -111,7 +97,6 @@ class ShopifyGraphQLUploader:
         self.music_category_id = None
         self.publication_ids = {}
         
-        # Playwright objects - réutilisés pour tous les uploads
         self.playwright = None
         self.browser = None
         self.context = None

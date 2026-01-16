@@ -490,7 +490,7 @@ class SecureBeatstarsScraper:
             return False
 
     def load_session(self):
-        """Load saved session if exists and valid - FIXED cookie domain issue"""
+        """Load saved session if exists and valid"""
         if not self.session_file.exists():
             return False
         
@@ -509,7 +509,6 @@ class SecureBeatstarsScraper:
             
             print("🔄 Attempting to restore previous session...")
             
-            # CRITICAL FIX: Navigate to base domain first
             self.driver.get("https://www.beatstars.com/")
             time.sleep(1)
             
@@ -517,7 +516,6 @@ class SecureBeatstarsScraper:
             cookies_added = 0
             for cookie in session_data['cookies']:
                 try:
-                    # Fix cookie domain compatibility
                     cookie_copy = cookie.copy()
                     
                     # Normalize domain to base domain
@@ -565,7 +563,7 @@ class SecureBeatstarsScraper:
             return False
 
     def check_login_status(self):
-        """Check if user is logged in - FIXED: better detection"""
+        """Check if user is logged in"""
         try:
             # Wait longer and check multiple indicators
             # First, check if we're on the studio page (not login page)
@@ -734,7 +732,7 @@ class SecureBeatstarsScraper:
                     list_button.click()
                 except:
                     self.driver.execute_script("arguments[0].click();", list_button)
-                time.sleep(1.5)  # OPTIMIZED: reduced from 2s
+                time.sleep(1.5) 
                 return True
         except:
             pass
@@ -751,7 +749,7 @@ class SecureBeatstarsScraper:
         while no_change < 3:
             # JavaScript scroll works even if window is in background
             self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-            time.sleep(2)  # OPTIMIZED: reduced from 3s
+            time.sleep(2) 
             
             current_count = len(self.driver.find_elements(By.CSS_SELECTOR, "studio-list-item"))
             print(f"\r   📊 Beats loaded: {current_count} (scroll #{scroll_step+1})", end='', flush=True)
@@ -768,7 +766,7 @@ class SecureBeatstarsScraper:
         
         # Scroll back to top
         self.driver.execute_script("window.scrollTo(0, 0);")
-        time.sleep(1.5)  # OPTIMIZED: reduced from 2s
+        time.sleep(1.5)
 
     def navigate_to_beatstars(self):
         """Navigate to BeatStars with login handling - AUTO list view + scroll + MANUAL verification"""
@@ -779,7 +777,6 @@ class SecureBeatstarsScraper:
             self.click_list_view_button()
             self.auto_scroll_to_bottom()
             
-            # MANUAL VERIFICATION
             print("\n⏸️  PAUSED: Please verify all beats are loaded")
             print("   Scroll manually if needed, then press ENTER...")
             input()
@@ -792,7 +789,6 @@ class SecureBeatstarsScraper:
                 # Auto-login already does list view + scroll + manual pause
                 return True
         
-        # MANUAL LOGIN - Never close automatically
         url = "https://studio.beatstars.com/content/tracks/uploaded"
         self.driver.get(url)
         
@@ -835,7 +831,6 @@ class SecureBeatstarsScraper:
                 if file.is_file() and not file.name.endswith('.crdownload') and not file.name.endswith('.tmp'):
                     file_age = time.time() - file.stat().st_mtime
                     if file_age < timeout:
-                        # CRITICAL FIX: Reject unwanted file types
                         if file.suffix.lower() in reject_extensions:
                             if self.verbose:
                                 print(f"  ⚠️ Rejecting unwanted file type: {file.name}")
@@ -915,7 +910,7 @@ class SecureBeatstarsScraper:
         """Safely click an element"""
         self.dismiss_popups()
         self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
-        time.sleep(0.3)  # OPTIMIZED: reduced from 0.5s
+        time.sleep(0.3)  
         try:
             element.click()
         except:
@@ -977,7 +972,6 @@ class SecureBeatstarsScraper:
                 self.safe_click(format_button)
                 time.sleep(1.5)
 
-                # FIX: Handle both MP3 AND WAV new window
                 if (format_name == "mp3" or format_name == "wav") and len(self.driver.window_handles) > 1:
                     new_tab = self.driver.window_handles[-1]
                     self.driver.switch_to.window(new_tab)
@@ -1064,7 +1058,7 @@ class SecureBeatstarsScraper:
         return successful
 
     def download_beat_files(self, beat_element, beat_name, beat_folder):
-        """Download MP3, WAV, and STEMS for a beat - FIXED: Added WAV fallback"""
+        """Download MP3, WAV, and STEMS for a beat"""
         main_window = self.driver.current_window_handle
         main_url = self.driver.current_url
         
@@ -1103,7 +1097,7 @@ class SecureBeatstarsScraper:
                     time.sleep(1.5)
                     main_window = self.driver.current_window_handle
                 
-                time.sleep(0.8)  # OPTIMIZED: reduced from 1s
+                time.sleep(0.8) 
                 
                 # Open menu
                 menu_button = WebDriverWait(beat_element, 10).until(
@@ -1123,9 +1117,8 @@ class SecureBeatstarsScraper:
                 )
                 existing_files = set(self.download_folder.glob("*"))
                 self.safe_click(format_button)
-                time.sleep(1.5)  # OPTIMIZED: reduced from 2s
+                time.sleep(1.5)  
 
-                # FIX: SPECIAL HANDLING FOR BOTH MP3 AND WAV (new window opens)
                 if (format_name == "mp3" or format_name == "wav") and len(self.driver.window_handles) > 1:
                     new_tab = self.driver.window_handles[-1]
                     self.driver.switch_to.window(new_tab)
@@ -1134,7 +1127,6 @@ class SecureBeatstarsScraper:
                     else:  # wav
                         self.handle_wav_player_download(main_window)
                 
-                # CRITICAL FIX: Validate downloaded file (reject SVG)
                 if self.wait_for_download(reject_extensions=['.svg', '.html', '.htm']):
                     new_files = set(self.download_folder.glob("*")) - existing_files
                     if new_files:
@@ -1171,7 +1163,7 @@ class SecureBeatstarsScraper:
                 # Close any dialog/menu
                 try:
                     ActionChains(self.driver).send_keys(Keys.ESCAPE).perform()
-                    time.sleep(0.3)  # OPTIMIZED: reduced from 0.5s
+                    time.sleep(0.3) 
                 except:
                     pass
 
@@ -1503,7 +1495,7 @@ class SecureBeatstarsScraper:
 
 
     def extract_and_download_beat(self, beat_element, beat_index, total_beats, skip_existing=True):
-        """Extract beat info and download files - FIXED: Improved verification"""
+        """Extract beat info and download files"""
         beat_data = {"index": beat_index, "title": "", "bpm": "", "tags": [], "creation_date": ""}
         
         try:
@@ -1596,7 +1588,6 @@ class SecureBeatstarsScraper:
                     beat_data["title"] = self.sanitize_filename(full_title_text)
                     tags_part = parts[1]
                     tags_part = re.sub(r'\s*(type beat|beat)\s*', '', tags_part, flags=re.IGNORECASE).strip()
-                    # FIX: Split only by 'x' or comma, preserve spaces in artist names
                     beat_data["tags"] = [tag.strip().lower() for tag in re.split(r'\s*[x,]\s*', tags_part, flags=re.IGNORECASE) if tag.strip()]
                 else:
                     beat_data["title"] = self.sanitize_filename(full_title_text)
@@ -1706,7 +1697,6 @@ class SecureBeatstarsScraper:
                 missing.append('stems')
                 print(f"   ⚠️  STEMS missing")
             
-            # FIX: RETRY missing files ONCE with improved WAV handling
             if missing:
                 print(f"   🔄 Retrying {len(missing)} missing file(s)...")
                 retry_success = self.retry_missing_files(beat_element, beat_folder, safe_beat_name, missing)
@@ -1721,7 +1711,6 @@ class SecureBeatstarsScraper:
                         elif file_type == 'stems' and self.find_stems_archive(beat_folder, safe_beat_name):
                             print(f"   ✓ STEMS downloaded (retry successful)")
                 
-                # FIX: Re-process stems if we just got WAV or STEMS
                 if 'wav' in missing or 'stems' in missing:
                     self.process_stems_archive(beat_folder, safe_beat_name)
             
@@ -1764,7 +1753,7 @@ class SecureBeatstarsScraper:
 
     def get_beat_names_preview(self):
         """Get list of all available beat names"""
-        time.sleep(1.5)  # OPTIMIZED: reduced from 2s
+        time.sleep(1.5)
         
         beat_elements = self.driver.find_elements(By.CSS_SELECTOR, "studio-list-item")
         beat_names = []
@@ -1871,7 +1860,7 @@ class SecureBeatstarsScraper:
         return beat_names
 
     def display_beats_list(self, beat_names):
-        """Display formatted list of available beats with download status - FIXED: checks ALL beats"""
+        """Display formatted list of available beats with download status"""
         print(f"\n📊 Found {len(beat_names)} beats:")
         print("=" * 70)
         
@@ -2509,7 +2498,7 @@ class SecureBeatstarsScraper:
                 # Refresh beat elements to avoid stale references
                 try:
                     self.driver.execute_script("window.scrollTo(0, 0);")
-                    time.sleep(0.4)  # OPTIMIZED
+                    time.sleep(0.4) 
                     
                     beat_elements = self.driver.find_elements(By.CSS_SELECTOR, "studio-list-item")
                     
