@@ -37,6 +37,7 @@ BeatStars-Shopify-Tool/
 ├── BeatStars-Shopify-Tool.exe    ← Batch uploads
 ├── Single-Upload-Tool.exe         ← Manual uploads
 ├── ms-playwright/                 ← Browsers (DO NOT DELETE!)
+├── scripts (you can ignore that unless you are a developper or want to dig into the actual code)
 ├── config.json                    ← To edit
 ├── README.md
 └── README_EN.md

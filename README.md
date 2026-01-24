@@ -220,6 +220,7 @@ Beats/
     ├── Titre du Beat_stems.zip     ← STEMS extraits (si disponible)
     ├── Titre du Beat_artwork.jpg   ← Cover image
     └── Titre du Beat_metadata.csv  ← BPM, tags, date
+
 ```
 
 **Formats d'archives supportés** (STEMS) :
@@ -302,8 +303,10 @@ BeatStars-Shopify-Tool/
 ├── Single-Upload-Tool.exe
 ├── ms-playwright/
 ├── config.json
+├── scripts (ignorez sauf si vous voulez modifier le code source)
 └── tools/                          ← Créé par vous
-    └── unrar.exe                   ← Téléchargé
+    └── unrar.exe                   ← Téléchargé (si vous ne l'avez pas déjà et que vos             archives   sont en .rar)
+
 ```
 
 ---
