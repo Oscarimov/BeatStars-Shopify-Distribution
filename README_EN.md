@@ -162,6 +162,8 @@ Open `config.json` and fill in:
 5. Press **Enter** in the terminal
 6. Files are downloaded automatically
 
+⚠️**Attention point**⚠️ : In ordrer for the download to be as efficient and accurate as possible , you might want to leave your pc and come back when it's done, especially for 20+ beats. In fact, the bot simulates clicks, so using your pc during the download can interefere with the process. You might also want to check your folders to see if some files are missing.
+
 **Downloaded files:**
 - MP3 (high quality)
 - WAV (if available)

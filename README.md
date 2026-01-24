@@ -200,6 +200,9 @@ Votre choix : _
    - Basculez en **vue liste** (icône liste en haut)
    - Scrollez jusqu'en bas pour charger tous vos beats
 4. **Appuyez sur Entrée** dans le terminal
+
+   ⚠️**Très Important**⚠️ : Pour garantir le meilleur fonctionnement possible des téléchargements, le mieux est de ne plus toucher à votre pc ou à votre souris, certains téléchargements simulent un clic de votre souris, une utilisation parallele peut interférer avec le bot. Il est également conseiller de vérifier l'intégrité des fichiers téléchargés dans vos dossiers, pour s'assurer qu'ils sont tous présents, et retélécharger ceux qui manquent ou relancer le process pour les beats en questions.
+
 5. **Choix du mode** :
    ```
    1. Télécharger tout (nouveau + manquants)
