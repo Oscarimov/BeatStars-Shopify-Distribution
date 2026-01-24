@@ -1,24 +1,67 @@
+"""
+Shopify GraphQL Uploader - Version améliorée avec corrections de robustesse
+===========================================================================
+Compatible avec: single_upload.py, main.py, build_all.py, config.json
+Supporte: ms-playwright bundled pour distribution .exe
+"""
+
 import time
 import os
 import sys
 import json
+import glob  # Import unique
 from pathlib import Path
 import tempfile
 import pandas as pd
 import requests
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any, Tuple
 import mimetypes
 from mutagen.mp3 import MP3
 import asyncio
 import nest_asyncio
 import tkinter as tk
 from tkinter import filedialog
+from functools import wraps
+from dataclasses import dataclass
+
+# ============================================================================
+# CONFIGURATION BROWSER (Viewport configurable)
+# ============================================================================
+
+@dataclass
+class BrowserConfig:
+    """Configuration centralisée du navigateur - RÉSOUT le problème de fenêtre géante"""
+    # Viewport pour mode manuel (fenêtre RAISONNABLE)
+    manual_viewport_width: int = 1280
+    manual_viewport_height: int = 800
+    
+    # Viewport pour mode headless (peut être plus grand)
+    headless_viewport_width: int = 1920
+    headless_viewport_height: int = 1080
+    
+    # Timeouts (en ms)
+    default_timeout: int = 30000
+    navigation_timeout: int = 30000
+    element_timeout: int = 10000
+    short_wait: int = 1000
+    medium_wait: int = 2000
+    long_wait: int = 5000
+    
+    # Retry config
+    max_retries: int = 3
+    retry_base_delay: float = 1.0
+
+# Config globale par défaut
+DEFAULT_BROWSER_CONFIG = BrowserConfig()
+
+# ============================================================================
+# GESTION PLAYWRIGHT BUNDLED (pour .exe)
+# ============================================================================
 
 if getattr(sys, 'frozen', False):
     exe_dir = os.path.dirname(sys.executable)
     browserpath = os.path.join(exe_dir, "ms-playwright")
     
-    import glob
     if os.path.exists(browserpath):
         chromium_found = glob.glob(os.path.join(browserpath, "chromium*"))
         
@@ -45,9 +88,55 @@ if getattr(sys, 'frozen', False):
     os.environ['PLAYWRIGHT_BROWSERS_PATH'] = browserpath
     os.environ['PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD'] = '1'
 
-from playwright.async_api import async_playwright, Browser, BrowserContext, Page
+from playwright.async_api import async_playwright, Browser, BrowserContext, Page, Error as PlaywrightError
 
 nest_asyncio.apply()
+
+# ============================================================================
+# UTILITAIRES
+# ============================================================================
+
+def get_or_create_event_loop() -> asyncio.AbstractEventLoop:
+    """Obtient ou crée un event loop de manière sûre et robuste"""
+    try:
+        loop = asyncio.get_running_loop()
+        return loop
+    except RuntimeError:
+        pass
+    
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_closed():
+            raise RuntimeError("Loop is closed")
+        return loop
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        return loop
+
+
+def with_retry(max_retries: int = 3, base_delay: float = 1.0, exceptions: tuple = (Exception,)):
+    """Décorateur pour retry avec exponential backoff"""
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            last_exception = None
+            for attempt in range(max_retries):
+                try:
+                    return func(*args, **kwargs)
+                except exceptions as e:
+                    last_exception = e
+                    if attempt < max_retries - 1:
+                        delay = base_delay * (2 ** attempt)
+                        time.sleep(delay)
+            raise last_exception
+        return wrapper
+    return decorator
+
+
+# ============================================================================
+# CLASSE PRINCIPALE
+# ============================================================================
 
 class ShopifyGraphQLUploader:
     def __init__(self, config_path: str = "config.json", beats_folder: Optional[Path] = None):
@@ -61,6 +150,10 @@ class ShopifyGraphQLUploader:
         """
         with open(config_path, 'r', encoding='utf-8') as f:
             self.config = json.load(f)
+        
+        # Browser config pour viewport adaptable
+        self.browser_config = DEFAULT_BROWSER_CONFIG
+        self._is_headless = True  # Track browser mode
         
         debug_mode = self.config.get('debug_mode', False)
         uploader_verbose = self.config.get('uploader_verbose', False)
@@ -98,9 +191,9 @@ class ShopifyGraphQLUploader:
         self.publication_ids = {}
         
         self.playwright = None
-        self.browser = None
-        self.context = None
-        self.page = None
+        self.browser: Optional[Browser] = None
+        self.context: Optional[BrowserContext] = None
+        self.page: Optional[Page] = None
         
         print(f"📁 Source folder: {self.download_folder}")
         print(f"🪐 Store: {self.store_url}")
@@ -112,11 +205,7 @@ class ShopifyGraphQLUploader:
         1. Check if 'beats_folder' is declared in config
         2. If yes and exists, use it
         3. If no or doesn't exist, ask user via file dialog
-        
-        Returns:
-            Path: Valid beats folder path
         """
-        # Try config first
         config_beats_folder = self.config.get('beats_folder')
         
         if config_beats_folder:
@@ -129,7 +218,6 @@ class ShopifyGraphQLUploader:
         else:
             print("ℹ️ No 'beats_folder' declared in config.json")
         
-        # Fallback: ask user
         print("\n📂 Please select your beats folder...")
         root = tk.Tk()
         root.withdraw()
@@ -148,7 +236,6 @@ class ShopifyGraphQLUploader:
             beats_path = Path(selected_folder)
             print(f"✅ Selected beats folder: {beats_path}")
             
-            # Optionally save to config for next time
             save_to_config = input("\n💾 Save this folder to config.json for next time? (y/n): ").strip().lower()
             if save_to_config == 'y':
                 self.config['beats_folder'] = str(beats_path)
@@ -158,12 +245,75 @@ class ShopifyGraphQLUploader:
             
             return beats_path
             
-        except Exception as e:
+        except (tk.TclError, Exception) as e:
             print(f"⚠️ Error selecting folder: {e}")
             print("Using temp directory as fallback.")
             return Path(tempfile.gettempdir())
         finally:
-            root.destroy()
+            try:
+                root.destroy()
+            except tk.TclError:
+                pass
+    
+    # =========================================================================
+    # GESTION BROWSER - VIEWPORT CONFIGURABLE
+    # =========================================================================
+    
+    def _get_viewport(self, headless: bool) -> Dict[str, int]:
+        """
+        Retourne le viewport approprié selon le mode.
+        
+        CORRECTION PRINCIPALE: En mode visible (manuel/CAPTCHA), utilise une 
+        fenêtre de taille raisonnable au lieu de 1920x1080.
+        """
+        if headless:
+            return {
+                'width': self.browser_config.headless_viewport_width,
+                'height': self.browser_config.headless_viewport_height
+            }
+        else:
+            # Mode visible = fenêtre RAISONNABLE (1280x800 par défaut)
+            return {
+                'width': self.browser_config.manual_viewport_width,
+                'height': self.browser_config.manual_viewport_height
+            }
+    
+    def _get_browser_args(self) -> List[str]:
+        """Arguments anti-détection pour le navigateur"""
+        return [
+            '--disable-blink-features=AutomationControlled',
+            '--disable-dev-shm-usage',
+            '--no-sandbox',
+            '--disable-setuid-sandbox'
+        ]
+    
+    async def _create_context(self, headless: bool, storage_state: Optional[str] = None) -> BrowserContext:
+        """
+        Crée un context browser avec les bons paramètres.
+        Centralise la création pour éviter la duplication de code.
+        """
+        viewport = self._get_viewport(headless)
+        
+        context_kwargs = {
+            'viewport': viewport,
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'locale': 'fr-FR',
+            'timezone_id': 'Europe/Paris'
+        }
+        
+        if storage_state and Path(storage_state).exists():
+            context_kwargs['storage_state'] = storage_state
+        
+        context = await self.browser.new_context(**context_kwargs)
+        
+        # Script anti-webdriver
+        await context.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => undefined
+            });
+        """)
+        
+        return context
     
     async def init_playwright(self, headless: bool = True):
         """Initialize Playwright browser with session restoration
@@ -172,24 +322,19 @@ class ShopifyGraphQLUploader:
             headless: If True, browser runs in background. If False, visible window.
         """
         if not self.playwright:
+            self._is_headless = headless
             self.playwright = await async_playwright().start()
             
-            # Launch browser with anti-detection
             try:
                 self.browser = await self.playwright.chromium.launch(
                     headless=headless,
-                    args=[
-                        '--disable-blink-features=AutomationControlled',
-                        '--disable-dev-shm-usage',
-                        '--no-sandbox',
-                        '--disable-setuid-sandbox'
-                    ]
+                    args=self._get_browser_args()
                 )
                 
                 if not headless:
                     print("🖥️  Browser window opened (manual login mode)")
                     
-            except Exception as e:
+            except PlaywrightError as e:
                 print("\n" + "=" * 70)
                 print("  ❌ PLAYWRIGHT BROWSER NOT INSTALLED")
                 print("=" * 70)
@@ -199,8 +344,6 @@ class ShopifyGraphQLUploader:
                     browser_path = os.environ.get('PLAYWRIGHT_BROWSERS_PATH', 'NOT SET')
                     print(f"  Browser path: {browser_path}")
                     
-                    # Auto-detect ANY Chromium version installed (including headless_shell)
-                    import glob
                     chromium_dirs = glob.glob(os.path.join(browser_path, "chromium-*"))
                     chromium_dirs += glob.glob(os.path.join(browser_path, "chromium_headless_shell-*"))
                     
@@ -217,11 +360,7 @@ class ShopifyGraphQLUploader:
                 else:
                     print(f"  Error: {str(e)}")
                     
-                # Different instructions for bundled vs development
                 if getattr(sys, 'frozen', False):
-                    # Running as bundled .exe
-                    import glob
-                    browser_path = os.environ.get('PLAYWRIGHT_BROWSERS_PATH', 'NOT SET')
                     chromium_dirs = glob.glob(os.path.join(browser_path, "chromium-*"))
                     chromium_dirs += glob.glob(os.path.join(browser_path, "chromium_headless_shell-*"))
                     
@@ -244,7 +383,6 @@ class ShopifyGraphQLUploader:
                         print("  2. Ensure ms-playwright/ folder is next to the .exe")
                         print("  3. Do NOT move files individually")
                 else:
-                    # Development mode
                     print("\nOption 1 - Run the setup script:")
                     print("  Double-click: setup_playwright.bat")
                     print("\nOption 2 - Run this command:")
@@ -252,10 +390,7 @@ class ShopifyGraphQLUploader:
                     print("\nThen run this program again.")
                 print("=" * 70)
                 
-                # Raise appropriate exception
                 if getattr(sys, 'frozen', False):
-                    import glob
-                    browser_path = os.environ.get('PLAYWRIGHT_BROWSERS_PATH', 'NOT SET')
                     chromium_dirs = glob.glob(os.path.join(browser_path, "chromium-*"))
                     chromium_dirs += glob.glob(os.path.join(browser_path, "chromium_headless_shell-*"))
                     
@@ -273,41 +408,93 @@ class ShopifyGraphQLUploader:
             if session_file.exists() and not self.config.get('force_fresh_login', False):
                 print("🔄 Attempting to restore previous session...")
                 if await self.load_browser_session():
-                    return  # Session restored successfully
+                    return
             
             # No saved session or expired - create new context
-            self.context = await self.browser.new_context(
-                viewport={'width': 1920, 'height': 1080},
-                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                locale='fr-FR',
-                timezone_id='Europe/Paris'
-            )
-            
-            # Remove webdriver detection
-            await self.context.add_init_script("""
-                Object.defineProperty(navigator, 'webdriver', {
-                    get: () => undefined
-                });
-            """)
-            
+            self.context = await self._create_context(headless)
             self.page = await self.context.new_page()
     
     async def close_playwright(self):
-        """Close Playwright browser"""
+        """Close Playwright browser proprement"""
+        errors = []
+        
+        if self.context:
+            try:
+                await self.context.close()
+            except PlaywrightError as e:
+                errors.append(f"context: {e}")
+            finally:
+                self.context = None
+                self.page = None
+        
         if self.browser:
-            await self.browser.close()
+            try:
+                await self.browser.close()
+            except PlaywrightError as e:
+                errors.append(f"browser: {e}")
+            finally:
+                self.browser = None
+        
         if self.playwright:
-            await self.playwright.stop()
-        print("🌐 Playwright browser closed")
+            try:
+                await self.playwright.stop()
+            except Exception as e:
+                errors.append(f"playwright: {e}")
+            finally:
+                self.playwright = None
+        
+        if errors:
+            print(f"⚠️  Errors closing Playwright: {', '.join(errors)}")
+        else:
+            print("🌐 Playwright browser closed")
+    
+    async def switch_to_visible_browser(self, navigate_to: Optional[str] = None) -> bool:
+        """
+        Bascule vers un navigateur visible (pour CAPTCHA ou login manuel).
+        
+        AMÉLIORATION: Utilise le viewport configuré (pas 1920x1080).
+        """
+        if not self._is_headless:
+            return True
+        
+        print("🔄 Switching to visible browser mode...")
+        
+        try:
+            if self.context:
+                await self.context.close()
+            if self.browser:
+                await self.browser.close()
+            
+            self.context = None
+            self.page = None
+            self.browser = None
+            
+            self.browser = await self.playwright.chromium.launch(
+                headless=False,
+                args=self._get_browser_args()
+            )
+            
+            # Créer le context avec le BON viewport (pas 1920x1080!)
+            self.context = await self._create_context(headless=False)
+            self.page = await self.context.new_page()
+            self._is_headless = False
+            
+            if navigate_to:
+                await self.page.goto(navigate_to, wait_until='domcontentloaded')
+                await self.page.wait_for_timeout(self.browser_config.medium_wait)
+            
+            print("🖥️  Browser window is now visible!")
+            return True
+            
+        except PlaywrightError as e:
+            print(f"❌ Error switching browser mode: {e}")
+            return False
     
     async def save_browser_session(self):
         """Save browser cookies and storage state (safe JSON)"""
         try:
             path = "shopify_session.json"
             await self.context.storage_state(path=path)
-
-            # 🔧 REWRITE JSON PROPERLY TO AVOID INVALID ESCAPES
-            import json
 
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
@@ -318,7 +505,7 @@ class ShopifyGraphQLUploader:
             print("💾 Session saved successfully (sanitized)")
             return True
 
-        except Exception as e:
+        except (OSError, json.JSONDecodeError, PlaywrightError) as e:
             print(f"⚠️ Could not save session: {e}")
             return False
 
@@ -329,20 +516,16 @@ class ShopifyGraphQLUploader:
             return False
         
         try:
-            # Close current context if exists
             if self.context:
                 await self.context.close()
             
-            # Create new context with saved state
-            self.context = await self.browser.new_context(
-                storage_state="shopify_session.json",
-                viewport={'width': 1920, 'height': 1080},
-                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            self.context = await self._create_context(
+                headless=self._is_headless,
+                storage_state="shopify_session.json"
             )
             
             self.page = await self.context.new_page()
             
-            # Test if session is still valid
             test_url = f"https://admin.shopify.com/store/{self.store_url.replace('.myshopify.com', '')}"
             await self.page.goto(test_url, timeout=15000, wait_until='domcontentloaded')
             await self.page.wait_for_timeout(2000)
@@ -353,7 +536,7 @@ class ShopifyGraphQLUploader:
             
             print("⚠️ Saved session expired")
             return False
-        except Exception as e:
+        except (PlaywrightError, OSError) as e:
             print(f"⚠️ Could not load session: {e}")
             return False
 
@@ -362,45 +545,35 @@ class ShopifyGraphQLUploader:
         try:
             current_url = self.page.url
             
-            # Quick check - are we on admin?
             if "admin.shopify.com" in current_url and "/store/" in current_url:
-                # Make sure not on login/2FA
                 if any(x in current_url.lower() for x in ["/login", "two_factor", "2fa", "authentication"]):
                     return False
                 return True
             
             return False
-        except:
+        except (PlaywrightError, AttributeError):
             return False
 
     async def verify_and_refresh_session(self) -> bool:
         """Verify session is still active, refresh if needed"""
         try:
-            # Check if we're logged in
             if await self.is_logged_in():
                 return True
             
-            # Session expired - try to load saved session
             print("\n⚠️ Session expired, trying to restore...")
             if await self.load_browser_session():
                 return True
             
-            # Could not restore - need fresh login
             print("\n" + "="*60)
             print("   ⚠️ SESSION EXPIRED - LOGIN REQUIRED")
             print("="*60)
             print("\n   Your Shopify session has expired.")
             
-            # Check if browser is headless
-            if self.browser and hasattr(self.browser, '_impl_obj'):
-                try:
-                    # Try to detect if headless
-                    print("\n   ⚠️ NOTE: Browser is running in background mode.")
-                    print("   If you can't see the browser window:")
-                    print("   1. Check your taskbar for Chromium")
-                    print("   2. Or restart the tool with auto_login disabled")
-                except:
-                    pass
+            if self._is_headless:
+                print("\n   ⚠️ NOTE: Browser is running in background mode.")
+                print("   If you can't see the browser window:")
+                print("   1. Check your taskbar for Chromium")
+                print("   2. Or restart the tool with auto_login disabled")
             
             print("\n   Please log in again in the browser window.")
             print("\n   ⚠️ Do NOT press Enter until you're on the dashboard!")
@@ -410,7 +583,6 @@ class ShopifyGraphQLUploader:
             
             await self.page.wait_for_timeout(2000)
             
-            # Verify login and save session
             if await self.is_logged_in():
                 await self.save_browser_session()
                 return True
@@ -418,7 +590,7 @@ class ShopifyGraphQLUploader:
                 print("❌ Login verification failed")
                 return False
                 
-        except Exception as e:
+        except PlaywrightError as e:
             print(f"❌ Error verifying session: {e}")
             return False
     
@@ -434,16 +606,15 @@ class ShopifyGraphQLUploader:
         email = login_config.get('email', '')
         password = login_config.get('password', '')
         auto_login = login_config.get('auto_login', False)
-        show_browser = login_config.get('show_browser', False)  # Force visible browser
+        show_browser = login_config.get('show_browser', False)
         
-        # Determine if we need visible browser (manual login OR user wants to see it)
         needs_manual_login = not auto_login or not email or not password
         use_visible_browser = needs_manual_login or show_browser
         
         # Initialize browser in appropriate mode
+        # Si visible, utilise le viewport RAISONNABLE (pas 1920x1080)
         await self.init_playwright(headless=not use_visible_browser)
         
-        # Force fresh login if requested
         if self.config.get('force_fresh_login', False):
             session_file = Path("shopify_session.json")
             if session_file.exists():
@@ -457,7 +628,6 @@ class ShopifyGraphQLUploader:
             print(f"🌐 Navigating to: {login_url}")
             await self.page.wait_for_timeout(3000)
             
-            # Check if already logged in
             if await self.is_logged_in():
                 print("✅ Already logged in!")
                 await self.save_browser_session()
@@ -478,7 +648,6 @@ class ShopifyGraphQLUploader:
                 print("   URL should be like: https://admin.shopify.com/store/YOUR-STORE/...\n")
                 input("👉 Press Enter ONLY when you're on the admin dashboard...")
                 
-                # Verify login was successful
                 await self.page.wait_for_timeout(2000)
                 if not await self.is_logged_in():
                     print("❌ Login verification failed. Please try again.")
@@ -501,9 +670,7 @@ class ShopifyGraphQLUploader:
                 print(f"   ✓ Email entered: {email}")
                 await self.page.wait_for_timeout(1500)
                 
-                # Click continue button (avoid passkey)
                 try:
-                    # Use JavaScript to find the right button
                     clicked = await self.page.evaluate("""
                         () => {
                             const buttons = Array.from(document.querySelectorAll('button'));
@@ -531,13 +698,12 @@ class ShopifyGraphQLUploader:
                     else:
                         await email_input.press('Enter')
                         print("   ✓ Pressed Enter")
-                except:
+                except PlaywrightError:
                     await email_input.press('Enter')
                     print("   ✓ Pressed Enter")
                 
                 await self.page.wait_for_timeout(3000)
                 
-                # Check for CAPTCHA
                 if await self.check_for_captcha():
                     if not await self.is_logged_in():
                         print("⚠️ Please complete the rest of the login process")
@@ -545,7 +711,7 @@ class ShopifyGraphQLUploader:
                     await self.save_browser_session()
                     return
                 
-            except Exception as e:
+            except PlaywrightError as e:
                 print(f"❌ Could not find email field: {e}")
                 input("Please complete login manually and press Enter when on the admin dashboard...")
                 await self.save_browser_session()
@@ -562,7 +728,6 @@ class ShopifyGraphQLUploader:
                 print("   ✓ Password entered")
                 await self.page.wait_for_timeout(1500)
                 
-                # Click login button
                 try:
                     login_button = await self.page.wait_for_selector(
                         "button[type='submit'], button:has-text('Se connecter'), button:has-text('Log in')",
@@ -570,13 +735,12 @@ class ShopifyGraphQLUploader:
                     )
                     await login_button.click()
                     print("   ✓ Clicked Login button")
-                except:
+                except PlaywrightError:
                     await password_input.press('Enter')
                     print("   ✓ Pressed Enter")
                 
                 await self.page.wait_for_timeout(4000)
                 
-                # Check for CAPTCHA
                 if await self.check_for_captcha():
                     if not await self.is_logged_in():
                         print("⚠️ Please complete the rest of the login process")
@@ -584,7 +748,7 @@ class ShopifyGraphQLUploader:
                     await self.save_browser_session()
                     return
                 
-            except Exception as e:
+            except PlaywrightError as e:
                 print(f"❌ Could not find password field: {e}")
                 input("Please complete login manually and press Enter when on the admin dashboard...")
                 await self.save_browser_session()
@@ -594,7 +758,6 @@ class ShopifyGraphQLUploader:
             print("\n🔐 Step 3/3: Checking for 2FA...")
             await self.page.wait_for_timeout(2000)
             
-            # Check if we're logged in
             if await self.is_logged_in():
                 print("   ✓ Login successful - no 2FA required!")
             else:
@@ -621,20 +784,18 @@ class ShopifyGraphQLUploader:
                     
                     input("👉 Press Enter ONLY when you're on the admin dashboard...")
                     
-                    # Verify login was successful
                     await self.page.wait_for_timeout(2000)
                     if not await self.is_logged_in():
                         print("\n❌ Warning: Login verification failed")
                         print(f"   Current URL: {self.page.url}")
                         input("👉 Please ensure you're logged in and press Enter...")
             
-            # Save session
             print("💾 Saving session...")
             await self.save_browser_session()
             
             print("\n✅ Login completed!\n")
             
-        except Exception as e:
+        except PlaywrightError as e:
             print(f"\n❌ Login error: {e}")
             print("\n⚠️ Please complete login manually")
             input("👉 Press Enter when you're on the admin dashboard...")
@@ -663,78 +824,18 @@ class ShopifyGraphQLUploader:
                 print("="*60)
                 print("\n   Shopify has detected automation and requires verification.")
                 
-                # Save current URL before any switching
                 current_url = self.page.url
                 
-                # Check if browser is in headless mode by checking if context was created with headless
-                is_headless = True  # Assume headless unless we can prove otherwise
-                try:
-                    # Check the show_browser config
-                    show_browser = self.config.get('shopify_login', {}).get('show_browser', False)
-                    if show_browser:
-                        is_headless = False
-                except:
-                    pass
-                
-                # If in headless mode, switch to visible
-                if is_headless:
+                # Si en mode headless, basculer vers visible avec fenêtre raisonnable
+                if self._is_headless:
                     print("   🔄 Switching to visible browser mode...")
                     print("="*60 + "\n")
                     
-                    # Get the store handle from config
                     store_handle = self.store_url.replace('.myshopify.com', '')
                     login_url = f"https://admin.shopify.com/store/{store_handle}"
                     
-                    try:
-                        # Close old browser properly
-                        if self.context:
-                            await self.context.close()
-                        if self.browser:
-                            await self.browser.close()
-                        
-                        # Reset references
-                        self.context = None
-                        self.page = None
-                        self.browser = None
-                        
-                        # Launch new visible browser
-                        self.browser = await self.playwright.chromium.launch(
-                            headless=False,
-                            args=[
-                                '--disable-blink-features=AutomationControlled',
-                                '--disable-dev-shm-usage',
-                                '--no-sandbox',
-                                '--disable-setuid-sandbox'
-                            ]
-                        )
-                        
-                        # Create new context
-                        self.context = await self.browser.new_context(
-                            viewport={'width': 1920, 'height': 1080},
-                            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                            locale='fr-FR',
-                            timezone_id='Europe/Paris'
-                        )
-                        
-                        # Remove webdriver detection
-                        await self.context.add_init_script("""
-                            Object.defineProperty(navigator, 'webdriver', {
-                                get: () => undefined
-                            });
-                        """)
-                        
-                        # Create new page
-                        self.page = await self.context.new_page()
-                        
-                        # Navigate to the login URL (not the current_url which might have the CAPTCHA)
-                        await self.page.goto(login_url, wait_until='domcontentloaded')
-                        await self.page.wait_for_timeout(2000)
-                        
-                        print("🖥️  Browser window is now visible!")
+                    if await self.switch_to_visible_browser(navigate_to=login_url):
                         print(f"🌐 Navigated to: {login_url}")
-                        
-                    except Exception as switch_error:
-                        print(f"⚠️ Error switching browser mode: {switch_error}")
                 
                 print("="*60 + "\n")
                 print("   Please solve the CAPTCHA in the browser window.")
@@ -747,34 +848,17 @@ class ShopifyGraphQLUploader:
             
             return False
             
-        except Exception as e:
+        except PlaywrightError as e:
             print(f"⚠️ Error checking CAPTCHA: {e}")
             return False
     
     def login_to_shopify(self):
         """Synchronous wrapper for login"""
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        
+        loop = get_or_create_event_loop()
         return loop.run_until_complete(self.login_to_shopify_async())
 
     async def verify_digital_downloads_async(self, product_id: str, product_title: str, expected_variants: dict, beat_folder: Path) -> dict:
-        """Verify that all files are properly attached to Digital Downloads variants
-        
-        Args:
-            product_id: Shopify product ID
-            product_title: Product title
-            expected_variants: Dict with variant info including file lists
-            beat_folder: Path to beat folder for file checking
-        
-        Returns:
-            dict with verification results
-        """
-        import glob
-        
+        """Verify that all files are properly attached to Digital Downloads variants"""
         try:
             if not await self.verify_and_refresh_session():
                 return {"status": "error", "message": "Could not establish session"}
@@ -784,7 +868,7 @@ class ShopifyGraphQLUploader:
             
             try:
                 await page.goto(product_url, timeout=30000, wait_until='domcontentloaded')
-            except Exception as nav_error:
+            except PlaywrightError as nav_error:
                 if any(x in page.url.lower() for x in ["login", "two_factor", "authentication"]):
                     if not await self.verify_and_refresh_session():
                         return {"status": "error", "message": "Session expired"}
@@ -794,7 +878,6 @@ class ShopifyGraphQLUploader:
             
             await page.wait_for_timeout(2000)
             
-            # Open Digital Downloads
             try:
                 more_actions = page.locator("button:has-text('More actions')").first
                 await more_actions.wait_for(state="visible", timeout=10000)
@@ -804,16 +887,15 @@ class ShopifyGraphQLUploader:
                 digital_file_link = page.locator("a:has-text('Add digital file')").first
                 await digital_file_link.wait_for(state="visible", timeout=10000)
                 await digital_file_link.click()
-            except Exception as e:
+            except PlaywrightError as e:
                 return {"status": "error", "message": f"Could not open Digital Downloads: {e}"}
             
             await page.wait_for_timeout(5000)
             
-            # Find iframe
             app_frame = None
             try:
                 app_frame = page.frame(name="app-iframe")
-            except:
+            except PlaywrightError:
                 pass
             
             if not app_frame:
@@ -823,7 +905,7 @@ class ShopifyGraphQLUploader:
                         if "delivery.shopifyapps.com" in frame.url or "Digital Downloads" in await frame.title():
                             app_frame = frame
                             break
-                    except:
+                    except PlaywrightError:
                         continue
             
             if not app_frame:
@@ -831,15 +913,13 @@ class ShopifyGraphQLUploader:
             
             await page.wait_for_timeout(3000)
             
-            # Check each variant's files
             results = {}
             has_any_issue = False
             
             for variant in expected_variants:
-                variant_name = variant["type"]  # variant name from config
+                variant_name = variant["type"]
                 expected_files = variant["files"]
                 
-                # Create display text based on file types
                 file_extensions = [Path(f).suffix.lower() for f in expected_files]
                 unique_extensions = list(set(file_extensions))
                 
@@ -848,7 +928,6 @@ class ShopifyGraphQLUploader:
                 else:
                     expected_display = f"{len(expected_files)} file(s) ({', '.join(unique_extensions)})"
                 
-                # Check if expected files exist locally
                 missing_local = []
                 for file_path in expected_files:
                     if not Path(file_path).exists():
@@ -868,49 +947,40 @@ class ShopifyGraphQLUploader:
                         "message": f"{len(expected_files)} file(s) configured"
                     }
             
-            # Try to detect if files are actually uploaded by checking DOM
             try:
-                # Look for file attachment indicators in the iframe
                 file_inputs = await app_frame.locator('input[type="file"]').all()
                 
-                # Count how many file inputs have files (not perfect but gives an indication)
                 uploaded_count = 0
                 for file_input in file_inputs:
                     try:
-                        # Check if input has files by looking at parent container for file names or "attached" indicators
                         parent = await file_input.locator('xpath=ancestor::div[contains(@class, "Polaris") or contains(@class, "field")]').first.inner_text()
                         
-                        # If we see file extensions or size indicators, files are likely uploaded
                         if any(ext in parent.lower() for ext in ['.mp3', '.wav', '.zip', '.rar', 'mb', 'gb', 'ko']):
                             uploaded_count += 1
-                    except:
+                    except PlaywrightError:
                         pass
                 
-                # If we couldn't detect any uploaded files but we expect some, flag as potential issue
                 total_expected = len(expected_variants)
                 if uploaded_count == 0 and total_expected > 0:
-                    # Mark all as potential issues
                     for variant_key in results.keys():
                         if results[variant_key]["status"] == "ok":
                             results[variant_key]["status"] = "warning"
                             results[variant_key]["message"] = "Could not verify upload - may need re-upload"
                             has_any_issue = True
                 
-            except Exception as e:
-                # If we can't check, don't fail - just note it
+            except PlaywrightError:
                 pass
             
-            # Navigate back
             try:
                 products_url = f"https://admin.shopify.com/store/{self.store_url.replace('.myshopify.com', '')}/products"
                 await page.goto(products_url, timeout=15000, wait_until='domcontentloaded')
                 await page.wait_for_timeout(2000)
-            except:
+            except PlaywrightError:
                 pass
             
             return {"status": "success", "results": results, "has_issues": has_any_issue}
             
-        except Exception as e:
+        except PlaywrightError as e:
             return {"status": "error", "message": str(e)}
     
     async def verify_all_digital_downloads_async(self) -> dict:
@@ -936,7 +1006,6 @@ class ShopifyGraphQLUploader:
             
             print(f"📋 {idx}/{len(mappings)}: {product_title}")
             
-            # Verify this product
             result = await self.verify_digital_downloads_async(product_id, product_title, variants, beat_folder)
             
             if result["status"] == "success":
@@ -992,7 +1061,6 @@ class ShopifyGraphQLUploader:
             
             await self.page.wait_for_timeout(1000)
         
-        # Summary
         print("\n" + "="*60)
         print("📊 VERIFICATION SUMMARY")
         print("="*60)
@@ -1026,29 +1094,14 @@ class ShopifyGraphQLUploader:
     
     def verify_all_digital_downloads(self):
         """Synchronous wrapper for verification"""
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        
+        loop = get_or_create_event_loop()
         return loop.run_until_complete(self.verify_all_digital_downloads_async())
 
     async def upload_files_to_digital_downloads_async(self, product_id: str, product_title: str, beat_folder: Path, only_large_files: bool = False):
-        """Upload files to Digital Downloads using existing Playwright session
-        
-        Args:
-            product_id: Shopify product ID
-            product_title: Product title for display
-            beat_folder: Path to beat folder
-            only_large_files: DEPRECATED - all files are now uploaded at once
-        """
-        import glob
-        
+        """Upload files to Digital Downloads using existing Playwright session"""
         verbose = self.config.get('digital_downloads_verbose', False)
         
         try:
-            # Verify session
             if not await self.verify_and_refresh_session():
                 print("❌ Could not establish valid session")
                 return False
@@ -1061,7 +1114,7 @@ class ShopifyGraphQLUploader:
             
             try:
                 await page.goto(product_url, timeout=30000, wait_until='domcontentloaded')
-            except Exception as nav_error:
+            except PlaywrightError as nav_error:
                 if any(x in page.url.lower() for x in ["login", "two_factor", "authentication"]):
                     if not await self.verify_and_refresh_session():
                         return False
@@ -1075,7 +1128,6 @@ class ShopifyGraphQLUploader:
                 print(f"❌ Not on product page")
                 return False
             
-            # Open Digital Downloads
             try:
                 more_actions = page.locator("button:has-text('More actions')").first
                 await more_actions.wait_for(state="visible", timeout=10000)
@@ -1085,17 +1137,16 @@ class ShopifyGraphQLUploader:
                 digital_file_link = page.locator("a:has-text('Add digital file')").first
                 await digital_file_link.wait_for(state="visible", timeout=10000)
                 await digital_file_link.click()
-            except Exception as e:
+            except PlaywrightError as e:
                 print(f"❌ Could not open Digital Downloads: {e}")
                 return False
             
             await page.wait_for_timeout(5000)
             
-            # Find iframe
             app_frame = None
             try:
                 app_frame = page.frame(name="app-iframe")
-            except:
+            except PlaywrightError:
                 pass
             
             if not app_frame:
@@ -1105,7 +1156,7 @@ class ShopifyGraphQLUploader:
                         if "delivery.shopifyapps.com" in frame.url or "Digital Downloads" in await frame.title():
                             app_frame = frame
                             break
-                    except:
+                    except PlaywrightError:
                         continue
             
             if not app_frame:
@@ -1113,7 +1164,6 @@ class ShopifyGraphQLUploader:
             
             await page.wait_for_timeout(4000)
             
-            # Find file inputs
             file_inputs = await app_frame.locator('input[type="file"]').all()
             
             if len(file_inputs) == 0:
@@ -1123,10 +1173,7 @@ class ShopifyGraphQLUploader:
             if verbose:
                 print(f"   Found {len(file_inputs)} file input(s)")
             
-            # Map inputs to variants - using config variant names
             variant_inputs = {}
-            
-            # Create a mapping of variant names from config
             config_variant_names = [v["name"] for v in self.config["variants"]]
             
             for idx, file_input in enumerate(file_inputs):
@@ -1139,7 +1186,7 @@ class ShopifyGraphQLUploader:
                             label = app_frame.locator(f'label[for="{input_id}"]').first
                             if await label.count() > 0:
                                 label_text = await label.inner_text()
-                        except:
+                        except PlaywrightError:
                             pass
                     
                     if not label_text:
@@ -1147,25 +1194,21 @@ class ShopifyGraphQLUploader:
                             parent = await file_input.evaluate('el => el.parentElement.textContent')
                             if parent:
                                 label_text = parent[:100]
-                        except:
+                        except PlaywrightError:
                             pass
                     
                     if label_text:
                         label_lower = label_text.lower()
                         
-                        # Match against config variant names
                         for variant_name in config_variant_names:
-                            # Simple matching: check if variant name (or key parts) are in label
                             variant_lower = variant_name.lower()
-                            # Extract key words from variant name (split by spaces, +, etc)
                             key_words = [w.strip() for w in variant_lower.replace('+', ' ').split() if len(w.strip()) > 2]
                             
-                            # Check if all key words are in the label
                             if all(word in label_lower for word in key_words):
                                 variant_inputs[variant_name] = file_input
                                 break
                     
-                except Exception as e:
+                except PlaywrightError as e:
                     if verbose:
                         print(f"   ⚠️ Error processing input: {e}")
                     continue
@@ -1174,13 +1217,11 @@ class ShopifyGraphQLUploader:
                 print("❌ Could not map file inputs")
                 return False
             
-            # Upload files - ALL FILES AT ONCE (no size filtering)
             uploaded_count = 0
             
             for variant_config in self.config["variants"]:
                 variant_name = variant_config["name"]
                 
-                # Get the corresponding input for this variant
                 target_input = variant_inputs.get(variant_name)
                 
                 if not target_input:
@@ -1188,29 +1229,22 @@ class ShopifyGraphQLUploader:
                         print(f"   ⚠️ No input found for variant '{variant_name}'")
                     continue
                 
-                # Collect ALL files (no size filtering)
                 files_to_upload = []
                 
-                # Get files from digital_files config
                 for file_type in variant_config.get("digital_files", []):
                     pattern = self.config["file_patterns"].get(file_type)
                     if pattern:
                         matches = glob.glob(str(beat_folder / pattern))
-                        # Also try lowercase pattern if no matches
                         if not matches:
                             pattern_lower = pattern.replace('_MP3', '_mp3').replace('_WAV', '_wav').replace('_STEMS', '_stems').replace('_Stems', '_stems')
                             matches = glob.glob(str(beat_folder / pattern_lower))
                         for file_path in matches:
                             files_to_upload.append(file_path)
                 
-                # IMPORTANT: Fallback file detection if no files collected
                 if not files_to_upload:
-                    # Try to find files for each type in digital_files
                     for file_type in variant_config.get("digital_files", []):
-                        # Get base pattern from config
                         base_pattern = self.config["file_patterns"].get(file_type, f"*{file_type}*")
                         
-                        # Try multiple variations of the pattern
                         patterns_to_try = [
                             base_pattern,
                             base_pattern.lower(),
@@ -1220,7 +1254,6 @@ class ShopifyGraphQLUploader:
                             f"*_{file_type.lower()}.*"
                         ]
                         
-                        # Special handling for stems/archives
                         if file_type.lower() in ['stems', 'stem']:
                             patterns_to_try.extend(["*.rar", "*.zip", "*stems*.rar", "*stems*.zip"])
                         
@@ -1247,7 +1280,7 @@ class ShopifyGraphQLUploader:
                 try:
                     await target_input.set_input_files(files_to_upload)
                     uploaded_count += 1
-                except Exception as e:
+                except PlaywrightError as e:
                     print(f"   ❌ Upload failed: {e}")
                     continue
             
@@ -1256,22 +1289,18 @@ class ShopifyGraphQLUploader:
                     print("   ℹ️  No files to upload")
                 return True
             
-            # Wait for uploads using popup detection method
             if verbose:
                 print(f"   ⏳ Waiting for uploads to complete...")
             
             async def wait_for_uploads_complete():
-                """Wait 20s, try save, if popup appears click OK and wait 10s more, repeat"""
-                # Initial wait
                 await page.wait_for_timeout(20000)
                 
-                max_attempts = 30  # 30 attempts max (can take up to 5+ minutes)
+                max_attempts = 30
                 attempt = 0
                 
                 while attempt < max_attempts:
                     attempt += 1
                     
-                    # Try to click Save button
                     save_clicked = False
                     save_selectors = [
                         'button:has-text("Save")',
@@ -1282,7 +1311,6 @@ class ShopifyGraphQLUploader:
                     
                     for selector in save_selectors:
                         try:
-                            # Try in iframe first
                             if app_frame != page:
                                 btn = app_frame.locator(selector).first
                                 if await btn.count() > 0 and await btn.is_visible():
@@ -1290,13 +1318,12 @@ class ShopifyGraphQLUploader:
                                     save_clicked = True
                                     break
                             
-                            # Try in main page
                             btn = page.locator(selector).first
                             if await btn.count() > 0 and await btn.is_visible():
                                 await btn.click(timeout=3000)
                                 save_clicked = True
                                 break
-                        except:
+                        except PlaywrightError:
                             continue
                     
                     if not save_clicked:
@@ -1304,10 +1331,8 @@ class ShopifyGraphQLUploader:
                             print(f"   ⚠️ Could not find Save button")
                         return False
                     
-                    # Wait for popup to appear
                     await page.wait_for_timeout(2000)
                     
-                    # Check for "Your files are uploading" popup
                     popup_found = False
                     
                     popup_selectors = [
@@ -1326,38 +1351,33 @@ class ShopifyGraphQLUploader:
                                         popup_text = await popup.inner_text()
                                         popup_text_lower = popup_text.lower()
                                         
-                                        # Check if it's the upload warning popup
                                         if any(word in popup_text_lower for word in ['uploading', 'upload', 'téléchargement', 'en cours']):
                                             popup_found = True
                                             
                                             if verbose:
                                                 print(f"   ⏳ Still uploading... (attempt {attempt})")
                                             
-                                            # Click OK button to close popup
                                             ok_btn = popup.locator('button:has-text("OK"), button:has-text("Ok")').first
                                             if await ok_btn.count() > 0:
                                                 await ok_btn.click()
                                             else:
-                                                # Try pressing Escape as fallback
                                                 await page.keyboard.press('Escape')
                                             
                                             await page.wait_for_timeout(500)
                                             break
-                                except:
+                                except PlaywrightError:
                                     continue
                             
                             if popup_found:
                                 break
-                        except:
+                        except PlaywrightError:
                             continue
                     
-                    # If no popup appeared, uploads are complete!
                     if not popup_found:
                         if verbose:
                             print(f"   ✅ Uploads complete!")
                         return True
                     
-                    # Wait 10 seconds before next attempt
                     await page.wait_for_timeout(10000)
                 
                 print(f"   ⚠️ Timeout after {attempt} attempts")
@@ -1369,25 +1389,21 @@ class ShopifyGraphQLUploader:
                 print("⚠️ Upload may not be complete")
                 return False
             
-            # Wait for the back button to be available (indicating save is complete)
             if verbose:
                 print(f"   💾 Waiting for save to complete...")
             else:
                 print(f"   💾 Saving files...")
             
             try:
-                # Wait for the dynamic back button to be clickable
                 back_button_selector = 'button#dynamic-back-button[role="link"]'
-                max_save_wait = 600  # 10 minutes max
+                max_save_wait = 600
                 elapsed = 0
                 save_verified = False
                 
                 while elapsed < max_save_wait:
-                    # Check if back button is available
                     try:
                         back_button = page.locator(back_button_selector).first
                         if await back_button.count() > 0:
-                            # Button exists, check if it's enabled and visible
                             is_visible = await back_button.is_visible()
                             is_enabled = await back_button.is_enabled()
                             
@@ -1398,10 +1414,9 @@ class ShopifyGraphQLUploader:
                                 else:
                                     print(f"   ✅ Save complete!")
                                 break
-                    except:
+                    except PlaywrightError:
                         pass
                     
-                    # Print progress every 30 seconds
                     if elapsed % 30 == 0 and elapsed > 0:
                         if verbose:
                             print(f"   ⏳ Still saving... ({elapsed}s / {max_save_wait}s)")
@@ -1415,14 +1430,12 @@ class ShopifyGraphQLUploader:
                     print(f"   ⚠️ Warning: Save verification timeout after {elapsed}s")
                     print(f"   ⚠️ Files may still be processing")
                 
-            except Exception as e:
+            except PlaywrightError as e:
                 if verbose:
                     print(f"   ⚠️ Error during save verification: {e}")
             
-            # Extra safety wait
             await page.wait_for_timeout(3000)
             
-            # Navigate back to products page to continue with next beat
             if verbose:
                 print(f"   🔙 Returning to products page...")
             
@@ -1430,14 +1443,14 @@ class ShopifyGraphQLUploader:
                 products_url = f"https://admin.shopify.com/store/{self.store_url.replace('.myshopify.com', '')}/products"
                 await page.goto(products_url, timeout=15000, wait_until='domcontentloaded')
                 await page.wait_for_timeout(2000)
-            except Exception as e:
+            except PlaywrightError as e:
                 if verbose:
                     print(f"   ⚠️ Could not navigate back to products: {e}")
             
             print(f"   ✅ Digital downloads configured")
             return True
             
-        except Exception as e:
+        except PlaywrightError as e:
             print(f"❌ Error: {e}")
             if verbose:
                 import traceback
@@ -1446,12 +1459,7 @@ class ShopifyGraphQLUploader:
 
     def upload_files_to_digital_downloads(self, product_id: str, product_title: str, beat_folder: Path, only_large_files: bool = False):
         """Synchronous wrapper for upload"""
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        
+        loop = get_or_create_event_loop()
         return loop.run_until_complete(
             self.upload_files_to_digital_downloads_async(product_id, product_title, beat_folder, only_large_files)
         )
@@ -1464,7 +1472,6 @@ class ShopifyGraphQLUploader:
         
         files = list(beat_folder.glob(pattern))
         
-        # Fallback patterns if primary pattern not found
         if not files:
             patterns_to_try = [
                 f"*_{file_type.upper()}.*",
@@ -1473,7 +1480,6 @@ class ShopifyGraphQLUploader:
                 f"*{file_type}*"
             ]
             
-            # Special handling for stems/archives
             if file_type.lower() in ['stems', 'stem']:
                 patterns_to_try.extend(["*.rar", "*.zip", "*stems*.rar", "*stems*.zip"])
             
@@ -1491,22 +1497,25 @@ class ShopifyGraphQLUploader:
         for variant in self.config['variants']:
             variant_name_lower = variant['name'].lower().strip()
             
-            # Exact match
             if variant_title_lower == variant_name_lower:
                 return variant
             
-            # Partial match - check if config variant name is in page title
             if variant_name_lower in variant_title_lower:
                 return variant
         
         return None
     
     def graphql_request(self, query: str, variables: dict = None) -> dict:
+        """Make a GraphQL request with automatic retry and token refresh"""
         payload = {"query": query}
         if variables:
             payload["variables"] = variables
         
-        response = requests.post(self.apiurl, json=payload, headers=self.headers, timeout=30)
+        try:
+            response = requests.post(self.apiurl, json=payload, headers=self.headers, timeout=30)
+        except requests.RequestException as e:
+            print(f"❌ Network error: {e}")
+            return None
         
         if response.status_code == 429:
             wait_time = int(response.headers.get('Retry-After', 2))
@@ -1527,27 +1536,28 @@ class ShopifyGraphQLUploader:
                     "client_secret": client_secret,
                     "grant_type": "client_credentials"
                 }
-                resp_oauth = requests.post(oauth_url, json=body, timeout=10)
-                if resp_oauth.status_code == 200:
-                    new_token = resp_oauth.json().get('access_token')
-                    if new_token:
-                        self.access_token = new_token
-                        self.headers['X-Shopify-Access-Token'] = new_token
-                        print(f"✅ Nouveau token obtenu: {new_token[:20]}...")
-                        
-                        # SAUVEGARDE SANS config_path (hardcode le nom)
-                        self.config['access_token'] = new_token
-                        config_file = "config.json"  # <- Hardcodé
-                        with open(config_file, 'w', encoding='utf-8') as f:
-                            json.dump(self.config, f, indent=2, ensure_ascii=False)
-                        print("💾 Token mis à jour dans config.json")
-                        
-                        # Retry
-                        return self.graphql_request(query, variables)
+                try:
+                    resp_oauth = requests.post(oauth_url, json=body, timeout=10)
+                    if resp_oauth.status_code == 200:
+                        new_token = resp_oauth.json().get('access_token')
+                        if new_token:
+                            self.access_token = new_token
+                            self.headers['X-Shopify-Access-Token'] = new_token
+                            print(f"✅ Nouveau token obtenu: {new_token[:20]}...")
+                            
+                            self.config['access_token'] = new_token
+                            config_file = "config.json"
+                            with open(config_file, 'w', encoding='utf-8') as f:
+                                json.dump(self.config, f, indent=2, ensure_ascii=False)
+                            print("💾 Token mis à jour dans config.json")
+                            
+                            return self.graphql_request(query, variables)
+                        else:
+                            print("❌ Aucun nouveau token dans la réponse OAuth")
                     else:
-                        print("❌ Aucun nouveau token dans la réponse OAuth")
-                else:
-                    print(f"❌ Échec refresh token: {resp_oauth.status_code} - {resp_oauth.text}")
+                        print(f"❌ Échec refresh token: {resp_oauth.status_code} - {resp_oauth.text}")
+                except requests.RequestException as e:
+                    print(f"❌ OAuth request failed: {e}")
             
             return None
         
@@ -1760,11 +1770,7 @@ class ShopifyGraphQLUploader:
         return False
     
     def get_collection_id(self) -> Optional[str]:
-        """
-        Récupère l'ID de collection depuis config avec validation robuste
-        
-        Format attendu: "gid://shopify/Collection/629200158987"
-        """
+        """Récupère l'ID de collection depuis config avec validation robuste"""
         
         collection_id = self.config.get('collection_id')
         
@@ -1779,23 +1785,19 @@ class ShopifyGraphQLUploader:
             print("\n   OU lancez: python get_collection_id.py")
             return None
         
-        # Nettoyer les espaces et guillemets éventuels
         collection_id = str(collection_id).strip().strip('"').strip("'")
         
-        # Vérifier le format
         if not collection_id.startswith('gid://shopify/Collection/'):
             print(f"❌ ERREUR: Format de collection_id invalide: '{collection_id}'")
             print(f"\n📋 Format attendu: 'gid://shopify/Collection/NUMERO'")
             print(f"   Vous avez: '{collection_id}'")
             
-            # Si c'est juste un numéro, suggérer le bon format
             if collection_id.replace('x', '').replace('X', '').isdigit() or collection_id.replace('x', '').replace('X', '').replace('_', '').isdigit():
                 print(f"\n💡 Si votre ID de collection est {collection_id}, utilisez:")
                 print(f"   'gid://shopify/Collection/{collection_id}'")
             
             return None
         
-        # Vérifier que la partie numérique n'est pas un placeholder
         collection_number = collection_id.split('/')[-1]
         if 'x' in collection_number.lower() or '_' in collection_number:
             print(f"❌ ERREUR: Le collection_id contient des placeholders: '{collection_id}'")
@@ -1812,9 +1814,6 @@ class ShopifyGraphQLUploader:
         return collection_id
     
     def save_digital_downloads_mapping(self, product_id: str, title: str, variant_mapping: dict, beat_folder: Path):
-        import glob
-        
-        # Get file patterns from config or use defaults
         file_patterns = self.config.get('file_patterns', {})
         
         mapping_data = {
@@ -1824,25 +1823,20 @@ class ShopifyGraphQLUploader:
             "variants": []
         }
         
-        # Helper function to get files by type
         def get_files_by_type(file_type: str) -> list:
-            """Get files matching the pattern for the given file type"""
             pattern = file_patterns.get(file_type, f'*{file_type}*')
             files = list(beat_folder.glob(pattern))
             return [str(f) for f in files] if files else []
         
-        # Iterate through each variant in the mapping
         for variant_name, variant_data in variant_mapping.items():
             variant_id = variant_data['id']
             digital_files_types = variant_data['digital_files']
             
-            # Collect all files for this variant
             files_to_attach = []
             for file_type in digital_files_types:
                 files = get_files_by_type(file_type)
                 files_to_attach.extend(files)
             
-            # Only add variant if it has files
             if files_to_attach:
                 mapping_data["variants"].append({
                     "variant_id": variant_id,
@@ -1857,7 +1851,7 @@ class ShopifyGraphQLUploader:
             with open(output_file, 'r', encoding='utf-8') as f:
                 try:
                     existing_data = json.load(f)
-                except:
+                except json.JSONDecodeError:
                     existing_data = []
         
         existing_data.append(mapping_data)
@@ -1900,8 +1894,8 @@ class ShopifyGraphQLUploader:
         """
         
         tags_list = []
-        if tags:
-            tags_list = [tag.strip() for tag in tags.split(',')]
+        if tags and isinstance(tags, str) and tags.strip():
+            tags_list = [tag.strip() for tag in tags.split(',') if tag.strip()]
         
         metafields = [
             {
@@ -1924,12 +1918,9 @@ class ShopifyGraphQLUploader:
             }
         ]
         
-        # Add creation_date metafield if available
         if creation_date:
-            # Convert date format from "Oct 28, 2024" to "2024-10-28" (ISO format)
             try:
                 from datetime import datetime
-                # Parse the date string (e.g., "Oct 28, 2024")
                 parsed_date = datetime.strptime(creation_date, "%b %d, %Y")
                 iso_date = parsed_date.strftime("%Y-%m-%d")
                 
@@ -1939,7 +1930,7 @@ class ShopifyGraphQLUploader:
                     "type": "date",
                     "value": iso_date
                 })
-            except Exception as e:
+            except ValueError as e:
                 if self.verbose:
                     print(f"   ⚠️ Could not parse creation date '{creation_date}': {e}")
         
@@ -2022,7 +2013,6 @@ class ShopifyGraphQLUploader:
                     print(f"⚠️ File processing failed: {file_id}")
                     return False
                 
-                # Still processing, wait and try again
                 time.sleep(1)
             else:
                 time.sleep(1)
@@ -2072,7 +2062,6 @@ class ShopifyGraphQLUploader:
         if result and result.get("data", {}).get("productUpdate", {}).get("product"):
             return True
         else:
-            # Only print errors if verbose mode is on
             if self.config.get('verbose', False):
                 if result and result.get("data", {}).get("productUpdate", {}).get("userErrors"):
                     errors = result["data"]["productUpdate"]["userErrors"]
@@ -2126,10 +2115,8 @@ class ShopifyGraphQLUploader:
         if result and result.get("data", {}).get("productVariantsBulkCreate", {}).get("productVariants"):
             created_variants = result['data']['productVariantsBulkCreate']['productVariants']
             
-            # Match created variants with config by name
             for config_variant in self.config['variants']:
                 variant_name = config_variant['name']
-                # Find the matching created variant
                 for created_variant in created_variants:
                     if variant_name in created_variant['title']:
                         variant_mapping[variant_name] = {
@@ -2219,14 +2206,18 @@ class ShopifyGraphQLUploader:
         
         target = stage_result["data"]["stagedUploadsCreate"]["stagedTargets"][0]
         
-        with open(file_path, 'rb') as f:
-            form_data = {param["name"]: param["value"] for param in target["parameters"]}
-            files = {'file': (filename, f, mime_type)}
-            
-            upload_response = requests.post(target["url"], data=form_data, files=files)
-            
-            if upload_response.status_code not in [200, 201, 204]:
-                return None
+        try:
+            with open(file_path, 'rb') as f:
+                form_data = {param["name"]: param["value"] for param in target["parameters"]}
+                files = {'file': (filename, f, mime_type)}
+                
+                upload_response = requests.post(target["url"], data=form_data, files=files)
+                
+                if upload_response.status_code not in [200, 201, 204]:
+                    return None
+        except (OSError, requests.RequestException) as e:
+            print(f"⚠️ File upload error: {e}")
+            return None
         
         if resource_type == "FILE":
             file_id = self.create_file(target["resourceUrl"], filename)
@@ -2292,16 +2283,11 @@ class ShopifyGraphQLUploader:
             minutes = duration_seconds // 60
             seconds = duration_seconds % 60
             return f"{minutes}:{seconds:02d}"
-        except:
+        except Exception:
             return "3:00"
     
     def upload_beat_to_shopify(self, beat_folder: Path, index: int) -> dict:
-        """
-        Upload beat to Shopify with all files at once
-        Returns dict with status and product info
-        """
-        import glob
-        
+        """Upload beat to Shopify with all files at once"""
         try:
             csv_files = list(beat_folder.glob("*_metadata.csv"))
             if not csv_files:
@@ -2309,26 +2295,59 @@ class ShopifyGraphQLUploader:
                 return {"status": "failed"}
             
             df = pd.read_csv(csv_files[0])
-            title = df['title'].iloc[0].strip()
-            bpm = str(df['bpm'].iloc[0])
-            tags = df['tags'].iloc[0]
-            creation_date = df['creation_date'].iloc[0] if 'creation_date' in df.columns else None
+            
+            # Validation des champs requis (title et bpm)
+            missing_fields = []
+            
+            # Vérifier title (REQUIS)
+            raw_title = df['title'].iloc[0] if 'title' in df.columns else None
+            if pd.isna(raw_title) or not isinstance(raw_title, str) or not str(raw_title).strip():
+                missing_fields.append("title")
+                title = ""
+            else:
+                title = str(raw_title).strip()
+            
+            # Vérifier bpm (REQUIS)
+            raw_bpm = df['bpm'].iloc[0] if 'bpm' in df.columns else None
+            if pd.isna(raw_bpm):
+                missing_fields.append("bpm")
+                bpm = "0"
+            else:
+                bpm = str(raw_bpm)
+            
+            # Si des champs requis manquent → SKIP
+            if missing_fields:
+                print(f"⚠️  Beat {index}: SKIPPED - Missing required metadata: {', '.join(missing_fields)}")
+                print(f"   📁 Folder: {beat_folder.name}")
+                return {"status": "skipped", "reason": f"missing_metadata: {', '.join(missing_fields)}"}
+            
+            # Tags (OPTIONNEL - peut être vide)
+            raw_tags = df['tags'].iloc[0] if 'tags' in df.columns else None
+            if pd.isna(raw_tags) or not isinstance(raw_tags, str):
+                tags = ""
+            else:
+                tags = str(raw_tags).strip()
+            
+            # creation_date (OPTIONNEL)
+            creation_date = None
+            if 'creation_date' in df.columns:
+                raw_date = df['creation_date'].iloc[0]
+                if pd.notna(raw_date) and isinstance(raw_date, str):
+                    creation_date = raw_date
             
             existing_product_id = self.check_product_exists(title)
             if existing_product_id:
                 print(f"⭐️ Beat {index}: SKIPPED - {title} (already exists)")
                 return {"status": "skipped"}
             
-            # Clear processing indicator at the start
             print(f"⚙️  Beat {index}: PROCESSING - {title}")
             
             artwork_patterns = ['*.jpg', '*.jpeg', '*.png', '*.gif', '*.webp']
             artwork_files = []
             for pattern in artwork_patterns:
                 artwork_files.extend(list(beat_folder.glob(pattern)))
-            artwork_files = artwork_files[:1]  # Prendre la première image trouvée
+            artwork_files = artwork_files[:1]
             
-            # Get file patterns from config or use defaults
             file_patterns = self.config.get('file_patterns', {})
             mp3_pattern = file_patterns.get('mp3', '*_MP3.*')
             wav_pattern = file_patterns.get('wav', '*_WAV.*')
@@ -2357,9 +2376,7 @@ class ShopifyGraphQLUploader:
                 print(f"❌ Beat {index}: FAILED - {title} (product creation failed)")
                 return {"status": "failed"}
             
-            # Update audio preview metafield if MP3 was uploaded
             if audio_file_id:
-                # Wait for file to be processed
                 if not self.check_file_status(audio_file_id):
                     print(f"   ⚠️ Could not set audio preview (file processing timeout)")
                 elif not self.update_audio_preview_metafield(product_id, audio_file_id):
@@ -2384,7 +2401,6 @@ class ShopifyGraphQLUploader:
             
             self.save_digital_downloads_mapping(product_id, title, variant_mapping, beat_folder)
             
-            # Upload ALL files at once
             if self.config.get('auto_upload_digital_downloads', True):
                 if not self.upload_files_to_digital_downloads(product_id, title, beat_folder, only_large_files=False):
                     print(f"⚠️ Beat {index}: Product created but Digital Downloads upload failed - {title}")
@@ -2464,7 +2480,6 @@ class ShopifyGraphQLUploader:
         skipped = 0
         failed = 0
         
-        # Create all products and upload ALL files at once
         for i, folder in enumerate(beat_folders, 1):
             result = self.upload_beat_to_shopify(folder, i)
             
@@ -2477,7 +2492,6 @@ class ShopifyGraphQLUploader:
             
             time.sleep(2)
         
-        # Final results
         print(f"\n{'=' * 60}")
         print(f"📊 FINAL RESULTS:")
         if created > 0:
@@ -2504,12 +2518,7 @@ class ShopifyGraphQLUploader:
         
         # Close Playwright at the end
         if self.browser:
-            try:
-                loop = asyncio.get_event_loop()
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-            
+            loop = get_or_create_event_loop()
             loop.run_until_complete(self.close_playwright())
 
 

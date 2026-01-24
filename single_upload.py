@@ -1,6 +1,5 @@
-# single_upload_debug.py
-# Version ULTRA-VERBOSE avec logs pour debug
-# Place ce fichier à côté de uploader.py et config.json
+# single_upload.py
+# Version corrigée avec fermeture propre de Playwright
 
 import shutil
 import tempfile
@@ -12,9 +11,10 @@ from tkinter import filedialog, simpledialog, messagebox
 import os
 import sys
 import traceback
+import asyncio
 
 # Import du uploader fourni
-from uploader import ShopifyGraphQLUploader
+from uploader import ShopifyGraphQLUploader, get_or_create_event_loop
 
 
 def debug_print(title, data=None):
@@ -79,7 +79,10 @@ def ask_files():
         debug_print("Erreur dans ask_files()", traceback.format_exc())
         return None
     finally:
-        root.destroy()
+        try:
+            root.destroy()
+        except tk.TclError:
+            pass
 
 
 def ask_metadata(default_title=None):
@@ -115,7 +118,10 @@ def ask_metadata(default_title=None):
         debug_print("Erreur dans ask_metadata()", traceback.format_exc())
         return None
     finally:
-        root.destroy()
+        try:
+            root.destroy()
+        except tk.TclError:
+            pass
 
 
 def prepare_temp_folder(files: dict, metadata: dict):
@@ -136,7 +142,7 @@ def prepare_temp_folder(files: dict, metadata: dict):
             return None
         try:
             src = Path(src_path)
-            dest = base_dir / src.name  # ← CHANGEMENT ICI : utiliser src.name au lieu de f"{safe_title}{suffix}{ext}"
+            dest = base_dir / src.name
             shutil.copy2(src, dest)
             debug_print(f"Copie {suffix}", f"{src} -> {dest}")
             return dest
@@ -168,8 +174,22 @@ def prepare_temp_folder(files: dict, metadata: dict):
     return base_dir
 
 
+def cleanup_playwright(uploader):
+    """Ferme proprement Playwright pour éviter l'erreur EPIPE"""
+    try:
+        if uploader.browser:
+            debug_print("Fermeture de Playwright...")
+            loop = get_or_create_event_loop()
+            loop.run_until_complete(uploader.close_playwright())
+            debug_print("Playwright fermé correctement")
+    except Exception as e:
+        debug_print("Erreur fermeture Playwright (non bloquant)", str(e))
+
+
 def main():
     debug_print("Démarrage du script")
+    
+    uploader = None  # Définir en dehors du try pour le finally
 
     files = ask_files()
     if not files:
@@ -186,44 +206,48 @@ def main():
 
     # Chargement du uploader
     try:
-        # Pass the temporary beat_folder to avoid folder selection dialog
-        # since single_upload creates its own temp folder
         uploader = ShopifyGraphQLUploader("config.json", beats_folder=beat_folder)
         debug_print("Uploader chargé OK")
     except Exception:
         debug_print("Erreur création ShopifyGraphQLUploader", traceback.format_exc())
         sys.exit(1)
 
-    # Login Playwright
     try:
+        # Login Playwright
         if uploader.config.get('auto_upload_digital_downloads', True):
             debug_print("Tentative login Shopify via Playwright…")
             uploader.login_to_shopify()
             debug_print("Login Playwright -> OK")
-    except Exception:
-        debug_print("Erreur login Playwright", traceback.format_exc())
 
-    debug_print("Début upload Shopify")
+        debug_print("Début upload Shopify")
 
-    try:
         result = uploader.upload_beat_to_shopify(beat_folder, index=1)
         debug_print("Résultat upload", result)
+
+        # Analyse résultat
+        if result.get("status") == "created":
+            message = f"UPLOAD OK — Produit Shopify créé : {result.get('title')}"
+            messagebox.showinfo("Succès", message)
+        elif result.get("status") == "skipped":
+            reason = result.get("reason", "")
+            if "already exists" in str(reason) or not reason:
+                message = "Produit déjà existant — ignoré."
+            else:
+                message = f"Beat ignoré — {reason}"
+            messagebox.showwarning("Skip", message)
+        else:
+            message = "Erreur pendant l'upload — voir console DEBUG."
+            messagebox.showerror("Erreur", message)
+
     except Exception:
         debug_print("ERREUR upload_beat_to_shopify()", traceback.format_exc())
         messagebox.showerror("Erreur critique", "ERREUR upload_beat_to_shopify — voir console")
-        sys.exit(1)
-
-    # Analyse résultat
-    if result.get("status") == "created":
-        message = f"UPLOAD OK — Produit Shopify créé : {result.get('title')}"
-        messagebox.showinfo("Succès", message)
-    elif result.get("status") == "skipped":
-        message = "Produit déjà existant — ignoré."
-        messagebox.showwarning("Skip", message)
-    else:
-        message = "Erreur pendant l’upload — voir console DEBUG."
-        messagebox.showerror("Erreur", message)
-
+    
+    finally:
+        # IMPORTANT: Toujours fermer Playwright proprement
+        if uploader:
+            cleanup_playwright(uploader)
+    
     debug_print("Script terminé — FIN")
 
 
