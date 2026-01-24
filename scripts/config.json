@@ -1,0 +1,79 @@
+{
+  "store_url": "xxxxxxxx.myshopify.com",
+  "access_token": "shpat_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "client_id": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "client_secret": "shpss_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "collection_id": "gid://shopify/Collection/xxxxxxxxxxxx",
+  "shopify_login": {
+    "email": "email",
+    "password": "mot_de_passe",
+    "auto_login": true,
+    "force_fresh_login": false
+  },
+  "product_type": "Beat",
+  "default_product_tags": [
+    "type beat",
+    "instrumental"
+  ],
+  "default_category_id": "gid://shopify/TaxonomyCategory/me-3-1",
+  "beatstars_login": {
+        "email": "email",
+        "password": "mot de passe",
+        "auto_login": true,
+        "force_fresh_login": false
+    },
+  "beats_folder": "C:/Users/xxxxx",
+  "auto_upload_digital_downloads": true,
+  "upload_large_files_after": true,
+  "large_file_threshold_mb": 500,
+  "variants": [
+    {
+      "name": "MP3",
+      "price": "29.99",
+      "digital_files": [
+        "mp3"
+      ]
+    },
+    {
+      "name": "PREMIUM (WAV)",
+      "price": "44.99",
+      "digital_files": [
+        "wav"
+      ]
+    },
+    {
+      "name": "PREMIUM + STEMS",
+      "price": "79.99",
+      "digital_files": [
+        "stems"
+      ]
+    },
+    {
+      "name": "UNLIMITED + STEMS",
+      "price": "129.99",
+      "digital_files": [
+        "stems"
+      ]
+    }
+  ],
+  "file_patterns": {
+    "mp3": "*.mp3",
+    "wav": "*.wav",
+    "stems": "*_stems.*"
+  },
+  "debug_mode": false,
+  "verbose": false,
+  "scraper_verbose": false,
+  "uploader_verbose": false,
+  "digital_downloads_verbose": false,
+  "_comments": {
+    "debug_mode": "MASTER DEBUG SWITCH: If true, enables ALL verbose options (scraper + uploader + downloads + detailed HTML analysis)",
+    "verbose": "DEPRECATED: Use debug_mode instead. Legacy option for backward compatibility",
+    "scraper_verbose": "If true, shows detailed scraper info (BPM extraction, menu finding, file downloads)",
+    "uploader_verbose": "If true, shows detailed uploader info (API calls, product creation, file uploads)",
+    "digital_downloads_verbose": "If true, shows detailed digital download API info",
+    "beatstars_login.auto_login": "If true, automatically login to BeatStars using saved credentials",
+    "beatstars_login.force_fresh_login": "If true, ignore saved session and force fresh login every time",
+    "shopify_login.force_fresh_login": "If true, ignore saved session and force fresh Shopify login"
+  }
+}
