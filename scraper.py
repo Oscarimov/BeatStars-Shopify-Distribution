@@ -12,7 +12,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
+from selenium.common.exceptions import TimeoutException, NoSuchElementException, StaleElementReferenceException
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.keys import Keys
 import zipfile
@@ -402,7 +402,281 @@ class SecureBeatstarsScraper:
             self.debug_beat_bpm_structure(beat_element, index)
         
         return bpm_value if bpm_value else "N/A"
-    
+
+    def extract_tags_from_detail_page(self, beat_element, beat_index):
+        """
+        Extract tags by opening the beat's detail page in a NEW TAB.
+        This preserves the scroll position and loaded elements in the main tab.
+        
+        Args:
+            beat_element: The Selenium WebElement for the beat row
+            beat_index: Index of the beat (for logging)
+        
+        Returns:
+            list: List of tag strings (lowercase), or empty list if extraction fails
+        """
+        tags = []
+        main_window = self.driver.current_window_handle
+        detail_url = None
+        new_tab = None
+        
+        try:
+            # Method 1: Get the detail page URL from the link
+            try:
+                detail_link = beat_element.find_element(
+                    By.CSS_SELECTOR, 
+                    "a[href*='/content/tracks/edit/']"
+                )
+                detail_url = detail_link.get_attribute('href')
+                if self.verbose:
+                    print(f"  [DEBUG] Detail URL found: {detail_url}")
+            except NoSuchElementException:
+                pass
+            
+            # Method 2: Try alternative selector
+            if not detail_url:
+                try:
+                    detail_link = beat_element.find_element(
+                        By.XPATH,
+                        ".//a[contains(@href, '/content/tracks/edit/')]"
+                    )
+                    detail_url = detail_link.get_attribute('href')
+                except NoSuchElementException:
+                    pass
+            
+            # Method 3: JavaScript extraction
+            if not detail_url:
+                try:
+                    detail_url = self.driver.execute_script("""
+                        var element = arguments[0];
+                        var link = element.querySelector('a[href*="/content/tracks/edit/"]');
+                        return link ? link.href : null;
+                    """, beat_element)
+                except:
+                    pass
+            
+            if not detail_url:
+                if self.verbose:
+                    print(f"  [DEBUG] Could not find detail page URL for beat {beat_index}")
+                return []
+            
+            # Open detail page in a NEW TAB (preserves main page scroll/state)
+            if self.verbose:
+                print(f"  🔗 Opening detail page in new tab for tags...")
+            
+            # Use JavaScript to open new tab
+            self.driver.execute_script(f"window.open('{detail_url}', '_blank');")
+            time.sleep(1)
+            
+            # Switch to new tab
+            all_windows = self.driver.window_handles
+            for window in all_windows:
+                if window != main_window:
+                    new_tab = window
+                    break
+            
+            if not new_tab:
+                if self.verbose:
+                    print(f"  [DEBUG] Could not open new tab")
+                return []
+            
+            self.driver.switch_to.window(new_tab)
+            
+            # Wait for page to load - wait for mat-chip-list to be present
+            try:
+                WebDriverWait(self.driver, 10).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, "mat-chip-list"))
+                )
+            except TimeoutException:
+                if self.verbose:
+                    print(f"  [DEBUG] mat-chip-list not found, trying alternative wait...")
+                # Alternative: wait for any form element
+                try:
+                    WebDriverWait(self.driver, 5).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, "form, .edit-form, [class*='edit']"))
+                    )
+                except:
+                    pass
+            
+            time.sleep(0.8)  # Small additional wait for dynamic content
+            
+            # Extract tags from mat-chip-list ONLY inside the tags container (not genres/moods)
+            # The tags container has data-qa="input_tag"
+            
+            # Method 1: Direct chip extraction via JavaScript - ONLY from tags container
+            try:
+                tags = self.driver.execute_script("""
+                    // Target ONLY the tags container (not genres or moods)
+                    var tagsContainer = document.querySelector('bs-chips-input[data-qa="input_tag"]');
+                    if (!tagsContainer) {
+                        tagsContainer = document.querySelector('[data-qa="input_tag"]');
+                    }
+                    if (!tagsContainer) return [];
+                    
+                    var chips = tagsContainer.querySelectorAll('mat-chip');
+                    var tags = [];
+                    for (var i = 0; i < chips.length; i++) {
+                        // Find the span with the tag text (not the icon)
+                        var spans = chips[i].querySelectorAll('span');
+                        for (var j = 0; j < spans.length; j++) {
+                            var text = (spans[j].textContent || spans[j].innerText || '').trim();
+                            // Skip empty strings and icon classes
+                            if (text && text.length > 0 && !text.includes('mat-chip') && !text.includes('icon')) {
+                                tags.push(text.toLowerCase());
+                                break;  // Take first valid span per chip
+                            }
+                        }
+                    }
+                    return tags;
+                """)
+                
+                if tags and len(tags) > 0:
+                    if self.verbose:
+                        print(f"  [DEBUG] Tags via JavaScript: {tags}")
+            except Exception as e:
+                if self.verbose:
+                    print(f"  [DEBUG] JavaScript tag extraction failed: {e}")
+            
+            # Method 2: Selenium-based extraction (fallback) - ONLY from tags container
+            if not tags:
+                try:
+                    # Find the tags container first
+                    tags_container = None
+                    try:
+                        tags_container = self.driver.find_element(
+                            By.CSS_SELECTOR, 
+                            'bs-chips-input[data-qa="input_tag"]'
+                        )
+                    except NoSuchElementException:
+                        try:
+                            tags_container = self.driver.find_element(
+                                By.CSS_SELECTOR, 
+                                '[data-qa="input_tag"]'
+                            )
+                        except NoSuchElementException:
+                            pass
+                    
+                    if tags_container:
+                        chip_elements = tags_container.find_elements(
+                            By.CSS_SELECTOR, 
+                            "mat-chip"
+                        )
+                        
+                        for chip in chip_elements:
+                            try:
+                                # Try to find span inside button inside bs-square-button
+                                span = chip.find_element(
+                                    By.CSS_SELECTOR, 
+                                    "bs-square-button button span"
+                                )
+                                tag_text = span.get_attribute('textContent') or span.text
+                                if tag_text:
+                                    tag_text = tag_text.strip().lower()
+                                    if tag_text and len(tag_text) > 0:
+                                        tags.append(tag_text)
+                            except NoSuchElementException:
+                                # Try alternative: any span in the chip
+                                try:
+                                    spans = chip.find_elements(By.CSS_SELECTOR, "span")
+                                    for span in spans:
+                                        tag_text = span.get_attribute('textContent') or span.text
+                                        if tag_text:
+                                            tag_text = tag_text.strip().lower()
+                                            if tag_text and len(tag_text) > 0 and 'icon' not in tag_text:
+                                                tags.append(tag_text)
+                                                break
+                                except:
+                                    pass
+                        
+                        if tags and self.verbose:
+                            print(f"  [DEBUG] Tags via Selenium: {tags}")
+                        
+                except Exception as e:
+                    if self.verbose:
+                        print(f"  [DEBUG] Selenium tag extraction failed: {e}")
+            
+            # Method 3: Try with label text to find the right section
+            if not tags:
+                try:
+                    tags = self.driver.execute_script("""
+                        // Find the label "Tags" and get chips from its parent container
+                        var labels = document.querySelectorAll('label');
+                        for (var i = 0; i < labels.length; i++) {
+                            var labelText = (labels[i].textContent || '').trim().toLowerCase();
+                            if (labelText === 'tags') {
+                                // Go up to find the container
+                                var container = labels[i].closest('bs-chips-input') || labels[i].parentElement.parentElement;
+                                if (container) {
+                                    var chips = container.querySelectorAll('mat-chip');
+                                    var results = [];
+                                    for (var j = 0; j < chips.length; j++) {
+                                        var span = chips[j].querySelector('bs-square-button button span');
+                                        if (span) {
+                                            var text = (span.textContent || span.innerText || '').trim();
+                                            if (text && text.length > 0) {
+                                                results.push(text.toLowerCase());
+                                            }
+                                        }
+                                    }
+                                    return results;
+                                }
+                            }
+                        }
+                        return [];
+                    """)
+                    
+                    if tags and self.verbose:
+                        print(f"  [DEBUG] Tags via label search: {tags}")
+                except:
+                    pass
+            
+            # Remove duplicates while preserving order
+            if tags:
+                seen = set()
+                unique_tags = []
+                for tag in tags:
+                    if tag not in seen and tag:
+                        seen.add(tag)
+                        unique_tags.append(tag)
+                tags = unique_tags
+            
+            if self.verbose:
+                if tags:
+                    print(f"  ✓ Extracted {len(tags)} tags: {', '.join(tags)}")
+                else:
+                    print(f"  ⚠️ No tags found on detail page")
+            
+        except Exception as e:
+            if self.verbose:
+                print(f"  [DEBUG] Error extracting tags from detail page: {e}")
+        
+        finally:
+            # ALWAYS close the new tab and return to main window
+            try:
+                # Close new tab if it was opened
+                if new_tab:
+                    try:
+                        self.driver.switch_to.window(new_tab)
+                        self.driver.close()
+                    except:
+                        pass
+                
+                # Switch back to main window
+                self.driver.switch_to.window(main_window)
+                time.sleep(0.3)  # Small wait for stability
+                
+            except Exception as e:
+                if self.verbose:
+                    print(f"  [DEBUG] Error closing tab: {e}")
+                # Try to recover by switching to any available window
+                try:
+                    if self.driver.window_handles:
+                        self.driver.switch_to.window(self.driver.window_handles[0])
+                except:
+                    pass
+        
+        return tags
+
     def save_learned_selector(self, selector_type, selector, description=""):
         """Save a working selector for future use"""
         if selector_type not in self.learned_selectors:
@@ -767,6 +1041,10 @@ class SecureBeatstarsScraper:
         # Scroll back to top
         self.driver.execute_script("window.scrollTo(0, 0);")
         time.sleep(1.5)
+
+    def scroll_to_load_all_beats(self):
+        """Alias for auto_scroll_to_bottom for compatibility"""
+        self.auto_scroll_to_bottom()
 
     def navigate_to_beatstars(self):
         """Navigate to BeatStars with login handling - AUTO list view + scroll + MANUAL verification"""
@@ -1302,85 +1580,68 @@ class SecureBeatstarsScraper:
                 return True
             
             elif archive_type in ['tar', 'tar.gz', 'tar.bz2', 'tar.xz']:
-                mode_map = {
-                    'tar': 'r',
-                    'tar.gz': 'r:gz',
-                    'tar.bz2': 'r:bz2',
-                    'tar.xz': 'r:xz'
-                }
-                with tarfile.open(archive_path, mode_map[archive_type]) as tar_ref:
+                mode = 'r'
+                if archive_type == 'tar.gz':
+                    mode = 'r:gz'
+                elif archive_type == 'tar.bz2':
+                    mode = 'r:bz2'
+                elif archive_type == 'tar.xz':
+                    mode = 'r:xz'
+                
+                with tarfile.open(archive_path, mode) as tar_ref:
                     tar_ref.extractall(extract_to)
                 return True
             
             elif archive_type == 'gz':
                 import gzip
                 output_path = extract_to / archive_path.stem
-                with gzip.open(archive_path, 'rb') as gz_file:
-                    with open(output_path, 'wb') as out_file:
-                        shutil.copyfileobj(gz_file, out_file)
+                with gzip.open(archive_path, 'rb') as f_in:
+                    with open(output_path, 'wb') as f_out:
+                        shutil.copyfileobj(f_in, f_out)
                 return True
             
             elif archive_type == 'bz2':
                 import bz2
                 output_path = extract_to / archive_path.stem
-                with bz2.open(archive_path, 'rb') as bz_file:
-                    with open(output_path, 'wb') as out_file:
-                        shutil.copyfileobj(bz_file, out_file)
+                with bz2.open(archive_path, 'rb') as f_in:
+                    with open(output_path, 'wb') as f_out:
+                        shutil.copyfileobj(f_in, f_out)
                 return True
+            
+            return False
             
         except Exception as e:
             if self.verbose:
-                print(f"  ❌ Error extracting {archive_type} archive: {e}")
+                print(f"  ⚠️ Extraction error: {e}")
             return False
-        
-        return False
 
-    def find_stems_archive(self, beat_folder, safe_beat_name=None):
-        """
-        Find stems archive - flexible matching (works with accent mismatches)
-        Cherche n'importe quel fichier avec 'stems' dans le nom
-        """
-        # Extensions supportées
-        extensions = ('.zip', '.rar', '.7z', '.tar.gz', '.tgz')
+    def find_stems_archive(self, beat_folder, safe_beat_name):
+        """Find stems archive in beat folder"""
+        archive_extensions = ['.zip', '.rar', '.7z', '.tar', '.tar.gz', '.tgz']
         
+        for ext in archive_extensions:
+            archive_path = beat_folder / f"{safe_beat_name}_stems{ext}"
+            if archive_path.exists():
+                return archive_path
+        
+        # Also check for any archive with 'stems' in the name
         for file in beat_folder.iterdir():
             if file.is_file():
-                file_lower = file.name.lower()
-                
-                # Chercher 'stems' dans le nom (peu importe le reste)
-                if 'stems' in file_lower:
-                    # Vérifier que c'est une archive
-                    if file_lower.endswith(extensions):
-                        return file
+                name_lower = file.name.lower()
+                if 'stems' in name_lower:
+                    for ext in archive_extensions:
+                        if name_lower.endswith(ext):
+                            return file
         
         return None
-    
-    def cleanup_temp_folder(self, temp_dir):
-        """
-        Clean up temporary extraction folder
-        
-        Args:
-            temp_dir: Path to the temporary directory to clean
-        """
-        try:
-            if temp_dir and temp_dir.exists():
-                shutil.rmtree(temp_dir)
-                if self.verbose:
-                    print(f"   🧹 Cleaned up temporary folder: {temp_dir.name}")
-        except Exception as e:
-            if self.verbose:
-                print(f"   ⚠️  Could not clean temp folder {temp_dir.name}: {e}")
 
     def process_stems_archive(self, beat_folder, safe_beat_name):
-        """
-        Process stems archive: extract, add WAV, rezip
-        Based on old working version - SIMPLE and AGGRESSIVE
-        """
+        """Process stems archive: extract, add WAV, and re-zip"""
         archive_path = self.find_stems_archive(beat_folder, safe_beat_name)
         
         if not archive_path:
             if self.verbose:
-                print(f"  ℹ️  No stems archive found")
+                print(f"  ⚠️ No stems archive found in {beat_folder.name}")
             return False
         
         # Find standalone WAV file
@@ -1393,10 +1654,10 @@ class SecureBeatstarsScraper:
         
         if not wav_file:
             if self.verbose:
-                print(f"  ⚠️  WAV file not found - cannot process archive")
+                print(f"  ⚠️ No standalone WAV file found")
             return False
         
-        # Check if archive already has WAV inside (ONLY check - don't skip lightly!)
+        # Check if WAV is already in the archive (for ZIP files)
         try:
             if archive_path.suffix.lower() == '.zip':
                 with zipfile.ZipFile(archive_path, 'r') as zipf:
@@ -1581,17 +1842,9 @@ class SecureBeatstarsScraper:
             
             if not full_title_text or full_title_text == "N/A" or len(full_title_text) < 3:
                 beat_data["title"] = f"Beat_{beat_index}"
-                beat_data["tags"] = []
             else:
-                if " - " in full_title_text:
-                    parts = full_title_text.split(" - ", 1)
-                    beat_data["title"] = self.sanitize_filename(full_title_text)
-                    tags_part = parts[1]
-                    tags_part = re.sub(r'\s*(type beat|beat)\s*', '', tags_part, flags=re.IGNORECASE).strip()
-                    beat_data["tags"] = [tag.strip().lower() for tag in re.split(r'\s*[x,]\s*', tags_part, flags=re.IGNORECASE) if tag.strip()]
-                else:
-                    beat_data["title"] = self.sanitize_filename(full_title_text)
-                    beat_data["tags"] = []
+                # Store the full title (sanitized for filesystem)
+                beat_data["title"] = self.sanitize_filename(full_title_text)
             
             safe_beat_name = beat_data['title']
             beat_folder = self.download_folder / safe_beat_name
@@ -1639,10 +1892,28 @@ class SecureBeatstarsScraper:
                 if self.verbose:
                     print(f"  ⚠️ Artwork not downloaded: {e}")
             
+            # Extract BPM and creation date
             beat_data["bpm"] = self.extract_bpm_robust(beat_element, beat_index)
             beat_data["creation_date"] = self.extract_creation_date_robust(beat_element, beat_index)
             
-            print(f"🎵 [{beat_index:03d}] Processing: {beat_data['title'][:45]}...", end='', flush=True)
+            # ============================================================
+            # NEW: Extract tags from detail page instead of title
+            # ============================================================
+            print(f"🎵 [{beat_index:03d}] Processing: {beat_data['title'][:45]}...")
+            
+            # Extract tags by navigating to detail page
+            beat_data["tags"] = self.extract_tags_from_detail_page(beat_element, beat_index)
+            
+            if beat_data["tags"]:
+                print(f"   🏷️  Tags: {', '.join(beat_data['tags'])}")
+            else:
+                print(f"   🏷️  No tags found")
+            
+            # ============================================================
+            # Continue with file downloads
+            # (beat_element is still valid since we used a new tab)
+            # ============================================================
+            print(f"   📥 Downloading files...", end='', flush=True)
             
             beat_data["downloads"] = self.download_beat_files(beat_element, beat_data['title'], beat_folder)
 
