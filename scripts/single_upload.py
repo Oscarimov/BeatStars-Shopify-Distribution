@@ -1,5 +1,6 @@
-# single_upload.py
-# Version corrigée avec fermeture propre de Playwright
+# single_upload_debug.py
+# Version ULTRA-VERBOSE avec logs pour debug
+# Place ce fichier à côté de uploader.py et config.json
 
 import shutil
 import tempfile
@@ -13,8 +14,24 @@ import sys
 import traceback
 import asyncio
 
+# Windows consoles (and redirected output) default to cp1252, which can't
+# encode the emoji used throughout the debug prints below - force UTF-8 so
+# this never crashes regardless of how the script is launched. Also switch
+# the console's own codepage to UTF-8, otherwise it still renders the bytes
+# as mojibake even though Python emitted them correctly.
+if sys.platform == 'win32':
+    try:
+        os.system('chcp 65001 > nul')
+    except Exception:
+        pass
+try:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    pass
+
 # Import du uploader fourni
-from uploader import ShopifyGraphQLUploader, get_or_create_event_loop
+from uploader import ShopifyGraphQLUploader
 
 
 def debug_print(title, data=None):
@@ -79,10 +96,7 @@ def ask_files():
         debug_print("Erreur dans ask_files()", traceback.format_exc())
         return None
     finally:
-        try:
-            root.destroy()
-        except tk.TclError:
-            pass
+        root.destroy()
 
 
 def ask_metadata(default_title=None):
@@ -118,10 +132,7 @@ def ask_metadata(default_title=None):
         debug_print("Erreur dans ask_metadata()", traceback.format_exc())
         return None
     finally:
-        try:
-            root.destroy()
-        except tk.TclError:
-            pass
+        root.destroy()
 
 
 def prepare_temp_folder(files: dict, metadata: dict):
@@ -142,7 +153,7 @@ def prepare_temp_folder(files: dict, metadata: dict):
             return None
         try:
             src = Path(src_path)
-            dest = base_dir / src.name
+            dest = base_dir / src.name  # ← CHANGEMENT ICI : utiliser src.name au lieu de f"{safe_title}{suffix}{ext}"
             shutil.copy2(src, dest)
             debug_print(f"Copie {suffix}", f"{src} -> {dest}")
             return dest
@@ -174,22 +185,8 @@ def prepare_temp_folder(files: dict, metadata: dict):
     return base_dir
 
 
-def cleanup_playwright(uploader):
-    """Ferme proprement Playwright pour éviter l'erreur EPIPE"""
-    try:
-        if uploader.browser:
-            debug_print("Fermeture de Playwright...")
-            loop = get_or_create_event_loop()
-            loop.run_until_complete(uploader.close_playwright())
-            debug_print("Playwright fermé correctement")
-    except Exception as e:
-        debug_print("Erreur fermeture Playwright (non bloquant)", str(e))
-
-
 def main():
     debug_print("Démarrage du script")
-    
-    uploader = None  # Définir en dehors du try pour le finally
 
     files = ask_files()
     if not files:
@@ -206,6 +203,8 @@ def main():
 
     # Chargement du uploader
     try:
+        # Pass the temporary beat_folder to avoid folder selection dialog
+        # since single_upload creates its own temp folder
         uploader = ShopifyGraphQLUploader("config.json", beats_folder=beat_folder)
         debug_print("Uploader chargé OK")
     except Exception:
@@ -214,40 +213,51 @@ def main():
 
     try:
         # Login Playwright
-        if uploader.config.get('auto_upload_digital_downloads', True):
-            debug_print("Tentative login Shopify via Playwright…")
-            uploader.login_to_shopify()
-            debug_print("Login Playwright -> OK")
+        try:
+            if uploader.config.get('auto_upload_digital_downloads', True):
+                debug_print("Tentative login Shopify via Playwright…")
+                uploader.login_to_shopify()
+                debug_print("Login Playwright -> OK")
+        except Exception:
+            debug_print("Erreur login Playwright", traceback.format_exc())
 
         debug_print("Début upload Shopify")
 
-        result = uploader.upload_beat_to_shopify(beat_folder, index=1)
-        debug_print("Résultat upload", result)
+        try:
+            result = uploader.upload_beat_to_shopify(beat_folder, index=1)
+            debug_print("Résultat upload", result)
+        except Exception:
+            debug_print("ERREUR upload_beat_to_shopify()", traceback.format_exc())
+            messagebox.showerror("Erreur critique", "ERREUR upload_beat_to_shopify — voir console")
+            sys.exit(1)
 
         # Analyse résultat
         if result.get("status") == "created":
             message = f"UPLOAD OK — Produit Shopify créé : {result.get('title')}"
             messagebox.showinfo("Succès", message)
         elif result.get("status") == "skipped":
-            reason = result.get("reason", "")
-            if "already exists" in str(reason) or not reason:
-                message = "Produit déjà existant — ignoré."
-            else:
-                message = f"Beat ignoré — {reason}"
+            message = "Produit déjà existant — ignoré."
             messagebox.showwarning("Skip", message)
         else:
-            message = "Erreur pendant l'upload — voir console DEBUG."
+            message = "Erreur pendant l’upload — voir console DEBUG."
             messagebox.showerror("Erreur", message)
-
-    except Exception:
-        debug_print("ERREUR upload_beat_to_shopify()", traceback.format_exc())
-        messagebox.showerror("Erreur critique", "ERREUR upload_beat_to_shopify — voir console")
-    
     finally:
-        # IMPORTANT: Toujours fermer Playwright proprement
-        if uploader:
-            cleanup_playwright(uploader)
-    
+        # IMPORTANT: always close Playwright properly, even on error/sys.exit,
+        # otherwise the Node.js driver process gets cut off mid-write and
+        # crashes with an EPIPE error right as the script exits.
+        if getattr(uploader, "browser", None) or getattr(uploader, "playwright", None):
+            debug_print("Fermeture de Playwright...")
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(uploader.close_playwright())
+                debug_print("Playwright fermé correctement")
+            except Exception as e:
+                debug_print("Erreur fermeture Playwright (non bloquant)", str(e))
+
     debug_print("Script terminé — FIN")
 
 

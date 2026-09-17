@@ -4,6 +4,22 @@ import json
 from pathlib import Path
 import tempfile
 
+# Windows consoles (and redirected output) default to cp1252, which can't
+# encode the emoji used throughout this tool's prints - force UTF-8 so it
+# never crashes regardless of how the script is launched. Also switch the
+# console's own codepage to UTF-8, otherwise it still renders the bytes as
+# mojibake even though Python emitted them correctly.
+if sys.platform == 'win32':
+    try:
+        os.system('chcp 65001 > nul')
+    except Exception:
+        pass
+try:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    pass
+
 def clear_screen():
     os.system('cls' if os.name == 'nt' else 'clear')
 

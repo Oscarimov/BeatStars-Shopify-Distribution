@@ -30,15 +30,24 @@ def check_prerequisites():
         'scraper.py': 'BeatStars scraper',
         'uploader.py': 'Shopify uploader',
         'single_upload.py': 'Single upload tool',
-        'config.json': 'Configuration file'
     }
-    
+
     for file, description in required_files.items():
         if Path(file).exists():
             print(f"✅ {file} - {description}")
         else:
             print(f"❌ {file} - NOT FOUND")
             errors.append(f"Missing file: {file}")
+
+    # config.json is gitignored (contains real secrets); config.example.json is the
+    # tracked template. Either is fine here — the build step sanitizes whichever it finds.
+    if Path('config.json').exists():
+        print(f"✅ config.json - Configuration file (local, will be sanitized for dist)")
+    elif Path('config.example.json').exists():
+        print(f"✅ config.example.json - Configuration template")
+    else:
+        print(f"❌ config.json / config.example.json - NOT FOUND")
+        errors.append("Missing file: config.json or config.example.json")
     
     # Check PyInstaller
     try:
@@ -48,19 +57,44 @@ def check_prerequisites():
         print("❌ PyInstaller - NOT INSTALLED")
         errors.append("PyInstaller not installed (pip install pyinstaller)")
     
-    # Check Playwright browsers
-    playwright_path = Path.home() / 'AppData' / 'Local' / 'ms-playwright'
-    chromium_headless_dirs = list(playwright_path.glob('chromium_headless_shell-*'))
-    chromium_full_dirs = list(playwright_path.glob('chromium-[0-9]*'))
-    
-    all_chromium = chromium_headless_dirs + chromium_full_dirs
-    
-    if not all_chromium:
-        print("❌ Playwright browser NOT INSTALLED")
-        errors.append("Playwright browser not found. Run: python -m playwright install chromium")
+    # The tool drives the user's real, installed Google Chrome (channel="chrome")
+    # for the Shopify features - it no longer launches Playwright's own bundled
+    # Chromium at all, so there's nothing to bundle here anymore. Just confirm
+    # Chrome is installed on THIS machine so the launch self-test below is
+    # meaningful (end users need their own Chrome installed too - that's
+    # documented in the README, not something we can bundle for them).
+    chrome_candidates = [
+        Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe"),
+        Path(r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"),
+    ]
+    if not any(p.exists() for p in chrome_candidates):
+        print("❌ Google Chrome NOT FOUND on this machine")
+        errors.append("Google Chrome not found. Install it from https://www.google.com/chrome/")
     else:
-        for browser in all_chromium:
-            print(f"✅ Playwright browser found: {browser.name}")
+        print("✅ Google Chrome found")
+
+        # Confirm Playwright can actually drive it (catches a missing VC++
+        # Redistributable or a broken Playwright driver install before it
+        # becomes an end-user support ticket).
+        verify_script = Path(__file__).parent / '_verify_playwright.py'
+        result = subprocess.run([sys.executable, str(verify_script)], capture_output=True, text=True)
+        if result.returncode != 0:
+            print("❌ Chrome is installed but Playwright FAILED to launch it")
+            print(result.stdout.strip())
+            print(result.stderr.strip())
+            errors.append(
+                "Playwright can't launch Chrome (missing VC++ Redistributable or a "
+                "broken Playwright install). Run scripts/setup_playwright.bat to repair it."
+            )
+        else:
+            print("✅ Chrome launch self-test passed")
+
+    login_bat = Path('login_shopify_chrome.bat')
+    if login_bat.exists():
+        print(f"✅ {login_bat.name} - one-time Shopify login helper")
+    else:
+        print(f"❌ {login_bat.name} - NOT FOUND")
+        errors.append(f"Missing file: {login_bat.name}")
     
     if errors:
         print("\n" + "=" * 70)
@@ -72,56 +106,6 @@ def check_prerequisites():
         return False
     
     print("\n✅ All prerequisites met")
-    return True
-
-def bundle_playwright_browsers():
-    """Bundle Playwright browsers once for both executables"""
-    print("\n" + "=" * 70)
-    print("  BUNDLING PLAYWRIGHT BROWSERS".center(70))
-    print("=" * 70)
-    print()
-    
-    playwright_source = Path.home() / 'AppData' / 'Local' / 'ms-playwright'
-    dist_folder = Path('dist')
-    playwright_dest = dist_folder / 'ms-playwright'
-    
-    # Find BOTH chromium directories (headless and full version)
-    chromium_headless_dirs = list(playwright_source.glob('chromium_headless_shell-*'))
-    chromium_full_dirs = list(playwright_source.glob('chromium-[0-9]*'))
-    
-    all_chromium_dirs = chromium_headless_dirs + chromium_full_dirs
-    
-    if not all_chromium_dirs:
-        print("❌ No Chromium browser found!")
-        return False
-    
-    print(f"📦 Found {len(all_chromium_dirs)} browser version(s):")
-    for browser_dir in all_chromium_dirs:
-        size_mb = sum(f.stat().st_size for f in browser_dir.rglob('*') if f.is_file()) / (1024*1024)
-        print(f"   • {browser_dir.name} ({size_mb:.1f} MB)")
-    
-    print(f"\n   Copying to: {playwright_dest}")
-    print(f"   This may take 2-3 minutes...\n")
-    
-    playwright_dest.mkdir(exist_ok=True)
-    
-    # Copy ALL chromium directories
-    for chromium_dir in all_chromium_dirs:
-        dest_chromium = playwright_dest / chromium_dir.name
-        
-        try:
-            if dest_chromium.exists():
-                shutil.rmtree(dest_chromium)
-            
-            print(f"   Copying {chromium_dir.name}...")
-            shutil.copytree(chromium_dir, dest_chromium)
-            print(f"   ✅ {chromium_dir.name} copied")
-            
-        except Exception as e:
-            print(f"   ❌ Failed to copy {chromium_dir.name}: {e}")
-            return False
-    
-    print(f"\n✅ All browsers bundled successfully!")
     return True
 
 def build_main_tool():
@@ -233,28 +217,33 @@ def create_distribution():
             shutil.copy2(src, dist_folder / exe)
             print(f"   ✓ {exe}")
     
-    # Copy browsers (shared)
-    browsers_src = Path('dist') / 'ms-playwright'
-    if browsers_src.exists():
-        browsers_dest = dist_folder / 'ms-playwright'
-        if browsers_dest.exists():
-            shutil.rmtree(browsers_dest)
-        shutil.copytree(browsers_src, browsers_dest)
-        print(f"   ✓ ms-playwright/ (shared browsers)")
-    
-    # Copy config template
-    if Path('config.json').exists():
+    # Copy the one-time Shopify login helper (drives the user's real Chrome -
+    # see README - the tool no longer bundles its own browser at all)
+    login_bat = Path('login_shopify_chrome.bat')
+    if login_bat.exists():
+        shutil.copy2(login_bat, dist_folder / login_bat.name)
+        print(f"   ✓ {login_bat.name}")
+
+    # Copy config template (prefer local config.json, fall back to the tracked example)
+    config_source = Path('config.json') if Path('config.json').exists() else Path('config.example.json')
+    if config_source.exists():
         import json
-        with open('config.json', 'r', encoding='utf-8') as f:
+        with open(config_source, 'r', encoding='utf-8') as f:
             config = json.load(f)
-        
+
         config['store_url'] = 'your-store.myshopify.com'
         config['access_token'] = 'shpat_your_token_here'
+        config['client_id'] = ''
+        config['client_secret'] = ''
         config['beats_folder'] = 'C:/Users/YourName/Documents/Beats'
-        
+        config.setdefault('shopify_login', {})['email'] = 'email'
+        config['shopify_login']['password'] = 'mot_de_passe'
+        config.setdefault('beatstars_login', {})['email'] = 'email'
+        config['beatstars_login']['password'] = 'mot de passe'
+
         with open(dist_folder / 'config.json', 'w', encoding='utf-8') as f:
             json.dump(config, f, indent=2)
-        print(f"   ✓ config.json (template)")
+        print(f"   ✓ config.json (template, sanitized from {config_source.name})")
     
     # Copy README files
     for readme in ['README.md', 'README_FR.md']:
@@ -287,38 +276,35 @@ if __name__ == "__main__":
             print("\n❌ One or more builds failed!")
             input("\nPress ENTER to exit...")
             sys.exit(1)
-        
-        # Bundle browsers (once, shared)
-        if not bundle_playwright_browsers():
-            print("\n⚠️  WARNING: Browsers not bundled!")
-        
+
         # Create distribution
         create_distribution()
-        
+
         # Summary
         print("\n" + "=" * 70)
         print("  ✅ BUILD COMPLETE".center(70))
         print("=" * 70)
-        
+
         print("\n📦 DISTRIBUTION CONTENTS:")
         print("   BeatStars-Shopify-Complete/")
         print("   ├── BeatStars-Shopify-Tool.exe     (batch uploads from BeatStars)")
         print("   ├── Single-Upload-Tool.exe         (manual single uploads)")
-        print("   ├── ms-playwright/                 (shared browsers, ~150 MB)")
+        print("   ├── login_shopify_chrome.bat       (one-time Shopify login)")
         print("   ├── config.json                    (must be edited by user)")
         print("   ├── README.md")
         print("   └── README_FR.md")
-        
+
         print("\n👤 USER INSTRUCTIONS:")
         print("   1. Extract the entire folder (keep structure)")
-        print("   2. Edit config.json with credentials")
-        print("   3. Run either executable:")
+        print("   2. Install Google Chrome if not already installed")
+        print("   3. Edit config.json with credentials")
+        print("   4. Run login_shopify_chrome.bat once and log into Shopify")
+        print("   5. Run either executable:")
         print("      • BeatStars-Shopify-Tool.exe → Batch uploads")
         print("      • Single-Upload-Tool.exe → Manual uploads")
-        
-        print("\n✅ Both tools share the same ms-playwright folder")
-        print("✅ No Playwright installation needed by users")
-        print("✅ Works on any Windows PC (no Python required)")
+
+        print("\n✅ No bundled browser - the tool drives the user's real Chrome")
+        print("✅ Works on any Windows PC with Chrome installed (no Python required)")
         
     except KeyboardInterrupt:
         print("\n\n⛔ Build cancelled by user")

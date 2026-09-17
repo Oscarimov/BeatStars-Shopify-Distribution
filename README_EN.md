@@ -1,10 +1,10 @@
-# BeatStars to Shopify Tool v3.0
+# BeatStars to Shopify Tool v3.1
 
 ## 🎯 Overview
 
 Complete tool to automate the transfer of your music productions from BeatStars to your Shopify store. Handles file downloads (MP3, WAV, STEMS, artwork) and uploads them with different pricing options.
 
-**✨ NEW v3.0**: Standalone executables - no need to install Python or Playwright!
+**✨ v3.1**: Standalone executables that drive your real Chrome (one-time Shopify login via `login_shopify_chrome.bat`, no more bundled browser).
 
 ---
 
@@ -21,9 +21,9 @@ You have **two tools** to choose from:
 - **Ideal for**: Quick uploads, tests, beats outside BeatStars
 
 **Both share**:
-- ✅ Same `ms-playwright/` folder (browsers included)
+- ✅ Same Chrome profile (`chrome_profile/`, set up via `login_shopify_chrome.bat`)
 - ✅ Same `config.json` file
-- ✅ No installation required
+- ✅ Require Google Chrome to be installed
 
 ---
 
@@ -36,7 +36,7 @@ You have **two tools** to choose from:
 BeatStars-Shopify-Tool/
 ├── BeatStars-Shopify-Tool.exe    ← Batch uploads
 ├── Single-Upload-Tool.exe         ← Manual uploads
-├── ms-playwright/                 ← Browsers (DO NOT DELETE!)
+├── login_shopify_chrome.bat       ← One-time Shopify login (run before first use)
 ├── scripts (you can ignore that unless you are a developper or want to dig into the actual code)
 ├── config.json                    ← To edit
 ├── README.md
@@ -173,11 +173,21 @@ Open `config.json` and fill in:
 - Metadata (BPM, tags, date)
 
 #### Option 2 - Shopify Upload
-1. Playwright browser opens (included in ms-playwright/)
-2. Automatic login to Shopify
-3. Product creation with variants
-4. Upload of downloadable files
-5. Attachment of covers
+
+**🌐 Requires Google Chrome installed** (the tool drives your real Chrome, not just the bundled browsers)
+
+**⚠️ One-time step before first use (or if the session expires):**
+1. Double-click `login_shopify_chrome.bat`
+2. A plain Chrome window opens (a profile dedicated to this tool, no automation)
+3. Log into Shopify as usual (solve any captcha/2FA normally)
+4. **Close that Chrome window completely** once you're on the dashboard
+
+This step exists because Shopify can block the login page for any script-driven browser. Logging in yourself in a non-automated window means the session is then reused normally by the tool, without ever going through the login screen again.
+
+1. Browser opens using the already-logged-in session
+2. Product creation with variants
+3. Upload of downloadable files
+4. Attachment of covers
 
 #### Option 3 - Complete Workflow
 Does everything at once: BeatStars download → Shopify upload
@@ -260,24 +270,19 @@ If your STEMS archives are in **RAR** format, you need to install UnRAR:
 
 ---
 
-### ❌ "Executable doesn't exist" or "Playwright not installed"
+### ❌ "Could not open Google Chrome" / Playwright can't launch Chrome
 
-**Cause:** `ms-playwright/` folder missing or misplaced
+**Most common cause:** The **Microsoft Visual C++ Redistributable (x64)** is missing, outdated, or was just repaired without a reboot. Chrome needs it to start, independently of Python/Playwright.
 
 **Solution:**
-1. Verify that `ms-playwright/` is **next to** the .exe files
-2. If missing, re-download all files from the github in the same folder
-3. **NEVER move** files individually
+1. Verify Google Chrome is actually installed: https://www.google.com/chrome/
+2. Download and install the VC++ Redistributable: https://aka.ms/vs/17/release/vc_redist.x64.exe
+3. **Reboot your PC** (often required for the install to take effect)
+4. Restart the tool
 
-**Correct structure:**
-```
-📁 Main folder
-├── BeatStars-Shopify-Tool.exe     ✅
-├── Single-Upload-Tool.exe          ✅
-├── 📁 ms-playwright/               ✅ Must be here!
-│   └── chromium_headless_shell-*/
-└── config.json                     ✅
-```
+**Other possible cause:** another window is already using the `chrome_profile/` folder (the one created by `login_shopify_chrome.bat`). Close any Chrome window the tool opened before retrying.
+
+**Note:** this error can appear for any feature - the tool drives your real Chrome for everything (scraper, Shopify upload, Single Upload).
 
 ---
 
@@ -305,13 +310,9 @@ Copy `config.json` **next to** the executables
 
 ### ❌ "Session expired"
 
-**Solution:** 
-Delete these files:
-- `beatstars_session.json`
-- `shopify_session.json`
-- `.shopify_token_cache` (if client credentials)
+**For BeatStars:** Delete `beatstars_session.json` then restart the tool → automatic reconnection.
 
-Then restart the tool → automatic reconnection
+**For Shopify:** Run `login_shopify_chrome.bat` again and log back in. If that's not enough, also delete the `chrome_profile/` folder and log in from scratch.
 
 ---
 
@@ -328,16 +329,13 @@ Then restart the tool → automatic reconnection
 ## ❓ Frequently Asked Questions
 
 **Do I need to install Python or Playwright?**
-❌ No! Everything is included in the executables
+❌ No! Everything is included in the executables - they drive your own installed Chrome instead of bundling a browser.
 
-**Why is the package 180 MB?**
-Chromium browsers are ~150 MB. This is normal (Chrome, VS Code, Discord = 150-300 MB)
-
-**Can I delete the ms-playwright/ folder to save space?**
-❌ NO! Both .exe files need it to function
+**Do I need to install Chrome?**
+✅ **YES** - for every feature (BeatStars scraper, Shopify upload, Single Upload).
 
 **Can both tools coexist?**
-✅ YES! They share the same `ms-playwright/` and `config.json`
+✅ YES! They share the same Chrome profile (`chrome_profile/`) and `config.json`
 
 **What's the difference between the two .exe files?**
 - **BeatStars-Shopify-Tool.exe**: Batch uploads from BeatStars
@@ -368,6 +366,7 @@ Download the new version, keep your `config.json`
 - `beatstars_session.json` - BeatStars session
 - `shopify_session.json` - Shopify session
 - `.shopify_token_cache` - API token (if client credentials)
+- `chrome_profile/` - Chrome profile dedicated to this tool (holds your Shopify login cookies - never share this folder)
 
 ---
 
@@ -419,7 +418,8 @@ In `config.json`, customize your offers:
 ## ✅ Getting Started Checklist
 
 - [ ] Download all files from github
-- [ ] `ms-playwright/` present next to .exe files
+- [ ] Google Chrome installed
+- [ ] `login_shopify_chrome.bat` run and logged into Shopify
 - [ ] Collection ID retrieved from Shopify
 - [ ] `config.json` edited with your info
 - [ ] Collection ID in correct format: `"gid://shopify/Collection/629200158987"`
@@ -430,6 +430,12 @@ In `config.json`, customize your offers:
 ---
 
 ## 📝 Version History
+
+**v3.1** - Digital Downloads upload fix (September 2026)
+- 🐛 Fix: Shopify renamed "Digital Downloads" to "Digital Products" and changed the whole UI (per-variant layout instead of one shared panel) - the upload code was rewritten to match
+- 🔐 Fix: Shopify now blocks the login page for any script-driven browser. The tool now drives your **real, installed Chrome** (dedicated profile via `login_shopify_chrome.bat`, one-time manual login) instead of an automated bundled Chromium
+- ❌ Removed: bundled Playwright browsers (`ms-playwright/`, ~150 MB) are no longer needed or shipped
+- ✅ Fix: each file upload is now actually confirmed (instead of assuming success once the dialog closes), plus the "Unsaved changes" bar is now saved too
 
 **v3.0** - Standalone executables (January 2026)
 - ✅ No need to install Python or Playwright
@@ -465,13 +471,13 @@ For any assistance:
 1. ✅ Check this README
 2. ✅ Check the **Troubleshooting** section
 3. ✅ Verify `config.json` is correct
-4. ✅ Verify `ms-playwright/` is present
+4. ✅ Verify Chrome is installed and `login_shopify_chrome.bat` was run
 
 **Issue with collection_id?**
 → "Troubleshooting" section above
 
-**Issue with Playwright?**
-→ Verify `ms-playwright/` is next to the .exe files
+**Issue with Chrome/Playwright?**
+→ See the "Could not open Google Chrome" section above
 
 ---
 

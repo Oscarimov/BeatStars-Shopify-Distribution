@@ -1,10 +1,10 @@
-# BeatStars to Shopify Tool v3.0
+# BeatStars to Shopify Tool v3.1
 
 ## 🎯 Vue d'ensemble
 
 Outil complet pour automatiser le transfert de vos productions musicales depuis BeatStars vers votre boutique Shopify. Gère le téléchargement automatique des fichiers depuis BeatStars (MP3, WAV, STEMS, artwork) et leur mise en ligne sur Shopify avec différentes options de tarification.
 
-**✨ NOUVEAU v3.0** : Exécutables autonomes avec browsers Playwright inclus!
+**✨ v3.1** : Exécutables autonomes qui pilotent votre vrai Chrome (connexion Shopify unique via `login_shopify_chrome.bat`, plus de navigateur embarqué).
 
 ---
 
@@ -41,7 +41,7 @@ Vous avez **deux outils** au choix :
 BeatStars-Shopify-Tool/
 ├── BeatStars-Shopify-Tool.exe    ← Outil complet (scraper + upload)
 ├── Single-Upload-Tool.exe         ← Upload manuel
-├── ms-playwright/                 ← Browsers Shopify (NE PAS SUPPRIMER!)
+├── login_shopify_chrome.bat       ← Connexion Shopify unique (à lancer avant la 1ère utilisation)
 ├── config.json                    ← À éditer
 ├── README.md
 └── README_EN.md
@@ -60,13 +60,13 @@ BeatStars-Shopify-Tool/
   - Le scraper utilise Selenium qui nécessite Chrome
 
 #### Pour **Upload Shopify** (Option 2 du menu) :
-- ✅ **Browsers inclus** dans ms-playwright/
-  - ❌ Aucune installation nécessaire
-  - Les browsers Playwright sont déjà bundlés
+- ✅ **Google Chrome installé** (dernière version)
+  - Téléchargement : https://www.google.com/chrome/
+  - ⚠️ **OBLIGATOIRE** : l'outil pilote votre vrai Chrome (pas un navigateur générique) pour éviter que Shopify bloque la connexion
+  - Une connexion manuelle unique est requise via `login_shopify_chrome.bat` (voir section "Option 2 - Upload Shopify" plus bas)
 
 #### Pour **Single Upload** :
-- ✅ **Browsers inclus** dans ms-playwright/
-  - ❌ Aucune installation nécessaire
+- ✅ **Google Chrome installé** (même prérequis que l'upload Shopify ci-dessus)
 
 ---
 
@@ -233,18 +233,25 @@ Beats/
 
 #### Option 2 - Upload Shopify
 
-**🌐 Browsers Playwright inclus (ms-playwright/)**
+**🌐 Nécessite Google Chrome installé** (l'outil pilote votre vrai Chrome, pas juste les browsers inclus)
+
+**⚠️ Étape unique à faire avant la première utilisation (ou si la session expire) :**
+1. Double-cliquez sur `login_shopify_chrome.bat`
+2. Une fenêtre Chrome normale s'ouvre (profil dédié à l'outil, aucune automatisation)
+3. Connectez-vous à Shopify comme d'habitude (captcha/2FA si demandé — normal, résolvez-le comme toujours)
+4. **Fermez complètement cette fenêtre Chrome** une fois sur le tableau de bord
+
+Cette étape existe car Shopify peut bloquer la page de connexion pour tout navigateur piloté par un script. En vous connectant vous-même dans une fenêtre Chrome non automatisée, la session est ensuite réutilisée normalement par l'outil, sans jamais repasser par l'écran de login.
 
 **Workflow :**
-1. Le browser Playwright s'ouvre (invisible en arrière-plan)
-2. Connexion automatique à Shopify
-3. Pour chaque beat dans le dossier :
+1. Le browser s'ouvre en utilisant la session déjà connectée
+2. Pour chaque beat dans le dossier :
    - ✅ Création du produit
    - ✅ Création des variantes (MP3, WAV, STEMS)
    - ✅ Upload des fichiers téléchargeables
    - ✅ Attachment de la cover image
    - ✅ Ajout à la collection
-4. Affichage du résumé
+3. Affichage du résumé
 
 **Note** : Détecte automatiquement les produits déjà uploadés et les ignore
 
@@ -301,7 +308,7 @@ Si vos archives STEMS sont en **ZIP ou 7Z**, vous n'avez rien à faire.
 BeatStars-Shopify-Tool/
 ├── BeatStars-Shopify-Tool.exe
 ├── Single-Upload-Tool.exe
-├── ms-playwright/
+├── login_shopify_chrome.bat
 ├── config.json
 ├── scripts (ignorez sauf si vous voulez modifier le code source)
 └── tools/                          ← Créé par vous
@@ -324,7 +331,7 @@ BeatStars-Shopify-Tool/
 3. Utilisez l'Option 1 (Scraper BeatStars)
 ```
 
-**Note :** Cette erreur apparaît **uniquement** si vous utilisez le scraper BeatStars (Option 1). L'upload Shopify (Option 2) et Single Upload ne nécessitent PAS Chrome.
+**Note :** Chrome est nécessaire pour **toutes** les fonctionnalités (scraper BeatStars, upload Shopify, Single Upload) — l'upload Shopify pilote directement votre Chrome installé, ce n'est plus juste le scraper qui en a besoin.
 
 ---
 
@@ -350,26 +357,19 @@ BeatStars-Shopify-Tool/
 
 ---
 
-### ❌ "Executable doesn't exist" ou "Playwright not installed"
+### ❌ "Could not open Google Chrome" / Playwright n'arrive pas à lancer Chrome
 
-**Cause :** Dossier `ms-playwright/` manquant ou mal placé
+**Cause la plus fréquente :** Le **Microsoft Visual C++ Redistributable (x64)** est manquant, périmé ou vient d'être réparé sans redémarrage. C'est une dépendance Windows dont Chrome a besoin pour démarrer, indépendante de Python/Playwright.
 
 **Solution :**
-1. Vérifiez que `ms-playwright/` est **à côté** des .exe
-2. Si manquant, re-téléchargez tous les fichiers dans le meme dossier
-3. **Ne déplacez JAMAIS** les fichiers individuellement
+1. Vérifiez que Google Chrome est bien installé : https://www.google.com/chrome/
+2. Téléchargez et installez le VC++ Redistributable : https://aka.ms/vs/17/release/vc_redist.x64.exe
+3. **Redémarrez votre PC** (souvent nécessaire pour que l'installation prenne effet)
+4. Relancez l'outil
 
-**Structure correcte :**
-```
-📁 Dossier principal
-├── BeatStars-Shopify-Tool.exe     ✅
-├── Single-Upload-Tool.exe          ✅
-├── 📁 ms-playwright/               ✅ Doit être là!
-│   └── chromium_headless_shell-*/
-└── config.json                     ✅
-```
+**Autre cause possible :** Une autre fenêtre utilise déjà le dossier `chrome_profile/` (celui créé par `login_shopify_chrome.bat`). Fermez toute fenêtre Chrome ouverte par l'outil avant de relancer.
 
-**Note :** Cette erreur apparaît pour l'upload Shopify (Options 2 et 3) ou Single Upload. Le scraper BeatStars utilise Chrome.
+**Note :** Cette erreur peut apparaître pour n'importe quelle fonctionnalité — l'outil pilote votre vrai Chrome pour tout (scraper, upload Shopify, Single Upload).
 
 ---
 
@@ -397,13 +397,9 @@ Copiez `config.json` **à côté** des exécutables
 
 ### ❌ "Session expirée"
 
-**Solution :** 
-Supprimez ces fichiers :
-- `beatstars_session.json` (session BeatStars)
-- `shopify_session.json` (session Shopify)
-- `.shopify_token_cache` (si client credentials)
+**Pour BeatStars :** Supprimez `beatstars_session.json` puis relancez l'outil → reconnexion automatique.
 
-Puis relancez l'outil → reconnexion automatique
+**Pour Shopify :** Relancez `login_shopify_chrome.bat` et reconnectez-vous. Si ça ne suffit pas, supprimez aussi le dossier `chrome_profile/` et recommencez la connexion depuis zéro.
 
 ---
 
@@ -425,38 +421,31 @@ Puis relancez l'outil → reconnexion automatique
 ❌ Non! Python est inclus dans les exécutables
 
 **Dois-je installer Playwright ?**
-❌ Non! Les browsers Playwright sont dans ms-playwright/
+❌ Non! Playwright est inclus dans les exécutables — il pilote simplement votre Chrome déjà installé.
 
 **Dois-je installer Chrome ?**
-✅ **OUI** - MAIS uniquement si vous voulez utiliser le scraper BeatStars (Option 1)
-❌ **NON** - Si vous utilisez seulement l'upload Shopify ou Single Upload
+✅ **OUI** - pour toutes les fonctionnalités (scraper BeatStars, upload Shopify, Single Upload).
 
 ---
 
 ### Taille et Structure
 
-**Pourquoi le package fait 180 MB ?**
-Les browsers Chromium (Playwright) font ~150 MB. C'est normal - Chrome, VS Code, Discord font tous 150-300 MB.
-
-**Puis-je supprimer ms-playwright/ pour gagner de la place ?**
-❌ NON! Nécessaire pour upload Shopify et Single Upload
-
 **Quelle différence entre les deux .exe ?**
 - **BeatStars-Shopify-Tool.exe** : 
   - Menu complet (scraper BeatStars + upload Shopify)
   - Workflow complet automatisé
-  - Nécessite Chrome pour scraper BeatStars
 - **Single-Upload-Tool.exe** : 
   - Upload manuel d'un seul beat
   - Sélection manuelle des fichiers
-  - Ne nécessite PAS Chrome
+
+Les deux nécessitent Chrome et le même `login_shopify_chrome.bat`.
 
 ---
 
 ### Utilisation
 
 **Les deux outils peuvent-ils coexister ?**
-✅ OUI! Ils partagent le même `ms-playwright/` et le même `config.json`
+✅ OUI! Ils partagent le même profil Chrome (`chrome_profile/`) et le même `config.json`
 
 **Comment mettre à jour l'outil ?**
 Téléchargez la nouvelle version, gardez votre `config.json`
@@ -486,6 +475,7 @@ Téléchargez la nouvelle version, gardez votre `config.json`
 - `beatstars_session.json` - Session BeatStars (scraper)
 - `shopify_session.json` - Session Shopify (upload)
 - `.shopify_token_cache` - Token API (si client credentials)
+- `chrome_profile/` - Profil Chrome dédié à l'outil (contient vos cookies de connexion Shopify — ne partagez jamais ce dossier)
 
 ---
 
@@ -553,25 +543,31 @@ Dans `config.json`, personnalisez vos offres :
 
 **Pour Upload Shopify uniquement (Option 2) :**
 - [ ] Tous les fichiers téléchargés
-- [ ] `ms-playwright/` présent à côté du .exe
+- [ ] Google Chrome installé
+- [ ] `login_shopify_chrome.bat` lancé et connexion Shopify effectuée
 - [ ] Collection ID récupéré depuis Shopify
 - [ ] `config.json` édité avec vos infos
-- [ ] Credentials Shopify configurés
 - [ ] Beats déjà téléchargés dans le dossier
 - [ ] Double-clic sur BeatStars-Shopify-Tool.exe
 - [ ] Option 2 → **Ça marche!** 🎉
 
 **Pour Single Upload :**
 - [ ] Tous les fichiers téléchargés
-- [ ] `ms-playwright/` présent à côté du .exe
+- [ ] Google Chrome installé
+- [ ] `login_shopify_chrome.bat` lancé et connexion Shopify effectuée
 - [ ] Collection ID récupéré depuis Shopify
 - [ ] `config.json` édité avec vos infos
-- [ ] Credentials Shopify configurés
 - [ ] Double-clic sur Single-Upload-Tool.exe → **Ça marche!** 🎉
 
 ---
 
 ## 📝 Historique des Versions
+
+**v3.1** - Réparation de l'upload Digital Downloads (Septembre 2026)
+- 🐛 Fix : Shopify a renommé "Digital Downloads" en "Digital Products" et changé toute l'interface (UI par variante au lieu d'un panneau unique) — le code d'upload a été entièrement réécrit pour suivre
+- 🔐 Fix : Shopify bloque désormais la page de connexion pour tout navigateur piloté par un script. L'outil pilote maintenant votre **vrai Chrome installé** (profil dédié via `login_shopify_chrome.bat`, connexion manuelle unique) au lieu d'un Chromium embarqué automatisé
+- ❌ Retiré : les navigateurs Playwright embarqués (`ms-playwright/`, ~150 MB) ne sont plus nécessaires ni distribués
+- ✅ Fix : confirmation réelle de l'upload de chaque fichier (au lieu de supposer un succès dès la fermeture de la fenêtre), + validation de la barre "Unsaved changes"
 
 **v3.0** - Exécutables autonomes (Janvier 2026)
 - ✅ Browsers Playwright bundlés (~150 MB)
@@ -608,17 +604,14 @@ Pour toute assistance :
 1. ✅ Consultez ce README
 2. ✅ Vérifiez la section **Résolution des Problèmes**
 3. ✅ Vérifiez que `config.json` est correct
-4. ✅ Pour scraper BeatStars : Vérifiez que Chrome est installé
-5. ✅ Pour upload Shopify : Vérifiez que `ms-playwright/` est présent
+4. ✅ Vérifiez que Chrome est installé (nécessaire pour tout : scraper, upload, single upload)
+5. ✅ Pour upload Shopify : avez-vous lancé `login_shopify_chrome.bat` et confirmé la connexion ?
 
 **Problème avec collection_id ?**
 → Section "Résolution des Problèmes" ci-dessus
 
 **Problème avec Chrome ?**
 → Installer Chrome : https://www.google.com/chrome/
-
-**Problème avec Playwright ?**
-→ Vérifiez que `ms-playwright/` est bien à côté des .exe
 
 ---
 

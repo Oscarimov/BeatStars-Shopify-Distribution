@@ -7,7 +7,7 @@
   "shopify_login": {
     "email": "email",
     "password": "mot_de_passe",
-    "auto_login": true,
+    "auto_login": false,
     "force_fresh_login": false
   },
   "product_type": "Beat",
@@ -17,11 +17,11 @@
   ],
   "default_category_id": "gid://shopify/TaxonomyCategory/me-3-1",
   "beatstars_login": {
-        "email": "email",
-        "password": "mot de passe",
-        "auto_login": true,
-        "force_fresh_login": false
-    },
+    "email": "email",
+    "password": "mot de passe",
+    "auto_login": true,
+    "force_fresh_login": false
+  },
   "beats_folder": "C:/Users/xxxxx",
   "auto_upload_digital_downloads": true,
   "upload_large_files_after": true,
@@ -74,6 +74,7 @@
     "digital_downloads_verbose": "If true, shows detailed digital download API info",
     "beatstars_login.auto_login": "If true, automatically login to BeatStars using saved credentials",
     "beatstars_login.force_fresh_login": "If true, ignore saved session and force fresh login every time",
-    "shopify_login.force_fresh_login": "If true, ignore saved session and force fresh Shopify login"
+    "shopify_login.force_fresh_login": "If true, ignore saved session and force fresh Shopify login",
+    "shopify_login.auto_login": "Recommended: false. Run login_shopify_chrome.bat once instead (see README) - the tool then reuses that already-logged-in Chrome profile and never needs to touch the login page itself, which avoids Shopify's bot detection on that page."
   }
 }
