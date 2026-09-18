@@ -482,14 +482,16 @@ class SecureBeatstarsScraper:
             
             self.driver.switch_to.window(new_tab)
             
-            # Wait for page to load - wait for mat-chip-list to be present
+            # Wait for page to load - wait for the tags chip grid to be
+            # present. Current Angular Material markup uses mat-chip-grid
+            # (older versions used mat-chip-list) - wait for either.
             try:
                 WebDriverWait(self.driver, 10).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, "mat-chip-list"))
+                    EC.presence_of_element_located((By.CSS_SELECTOR, "mat-chip-grid, mat-chip-list"))
                 )
             except TimeoutException:
                 if self.verbose:
-                    print(f"  [DEBUG] mat-chip-list not found, trying alternative wait...")
+                    print(f"  [DEBUG] mat-chip-grid/mat-chip-list not found, trying alternative wait...")
                 # Alternative: wait for any form element
                 try:
                     WebDriverWait(self.driver, 5).until(
@@ -512,19 +514,23 @@ class SecureBeatstarsScraper:
                         tagsContainer = document.querySelector('[data-qa="input_tag"]');
                     }
                     if (!tagsContainer) return [];
-                    
-                    var chips = tagsContainer.querySelectorAll('mat-chip');
+
+                    // Angular Material's chip markup: older versions render
+                    // <mat-chip>, current versions render <mat-chip-row>
+                    // (part of the newer accessible chip-grid API) - match
+                    // both so this survives either version.
+                    var chips = tagsContainer.querySelectorAll('mat-chip-row, mat-chip');
                     var tags = [];
                     for (var i = 0; i < chips.length; i++) {
-                        // Find the span with the tag text (not the icon)
-                        var spans = chips[i].querySelectorAll('span');
-                        for (var j = 0; j < spans.length; j++) {
-                            var text = (spans[j].textContent || spans[j].innerText || '').trim();
-                            // Skip empty strings and icon classes
-                            if (text && text.length > 0 && !text.includes('mat-chip') && !text.includes('icon')) {
-                                tags.push(text.toLowerCase());
-                                break;  // Take first valid span per chip
-                            }
+                        // The tag text lives in the first <span> inside the
+                        // chip's clickable button (button[bsbuttonchip] in
+                        // current markup, bs-square-button button before) -
+                        // that button also contains a remove <i> icon, but
+                        // never another <span>, so this is unambiguous.
+                        var textEl = chips[i].querySelector('button[bsbuttonchip] span, bs-square-button button span');
+                        var text = textEl ? (textEl.textContent || textEl.innerText || '').trim() : '';
+                        if (text && text.length > 0) {
+                            tags.push(text.toLowerCase());
                         }
                     }
                     return tags;
@@ -558,16 +564,18 @@ class SecureBeatstarsScraper:
                     
                     if tags_container:
                         chip_elements = tags_container.find_elements(
-                            By.CSS_SELECTOR, 
-                            "mat-chip"
+                            By.CSS_SELECTOR,
+                            "mat-chip-row, mat-chip"
                         )
-                        
+
                         for chip in chip_elements:
                             try:
-                                # Try to find span inside button inside bs-square-button
+                                # Try to find span inside the chip's clickable
+                                # button (current markup: button[bsbuttonchip],
+                                # older markup: bs-square-button button)
                                 span = chip.find_element(
-                                    By.CSS_SELECTOR, 
-                                    "bs-square-button button span"
+                                    By.CSS_SELECTOR,
+                                    "button[bsbuttonchip] span, bs-square-button button span"
                                 )
                                 tag_text = span.get_attribute('textContent') or span.text
                                 if tag_text:
@@ -607,10 +615,10 @@ class SecureBeatstarsScraper:
                                 // Go up to find the container
                                 var container = labels[i].closest('bs-chips-input') || labels[i].parentElement.parentElement;
                                 if (container) {
-                                    var chips = container.querySelectorAll('mat-chip');
+                                    var chips = container.querySelectorAll('mat-chip-row, mat-chip');
                                     var results = [];
                                     for (var j = 0; j < chips.length; j++) {
-                                        var span = chips[j].querySelector('bs-square-button button span');
+                                        var span = chips[j].querySelector('button[bsbuttonchip] span, bs-square-button button span');
                                         if (span) {
                                             var text = (span.textContent || span.innerText || '').trim();
                                             if (text && text.length > 0) {

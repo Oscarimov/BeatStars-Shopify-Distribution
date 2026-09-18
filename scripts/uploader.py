@@ -2118,8 +2118,15 @@ class ShopifyGraphQLUploader:
             
             df = pd.read_csv(csv_files[0])
             title = df['title'].iloc[0].strip()
-            bpm = str(df['bpm'].iloc[0])
-            tags = df['tags'].iloc[0]
+            # pandas reads an empty CSV cell as NaN (a float), not "" or None -
+            # and NaN is truthy in Python, so downstream `if tags:` checks
+            # don't catch it and `tags.split(',')` crashes with
+            # "'float' object has no attribute 'split'". Coerce to a real
+            # string right away so every consumer just sees "" when empty.
+            raw_bpm = df['bpm'].iloc[0]
+            bpm = '' if pd.isna(raw_bpm) else str(raw_bpm)
+            raw_tags = df['tags'].iloc[0]
+            tags = '' if pd.isna(raw_tags) else str(raw_tags)
             creation_date = df['creation_date'].iloc[0] if 'creation_date' in df.columns else None
             
             existing_product_id = self.check_product_exists(title)

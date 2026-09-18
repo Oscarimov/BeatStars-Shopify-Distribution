@@ -50,3 +50,4 @@ scripts/BeatStars-Shopify-Complete/
 .DS_Store
 Thumbs.db
 .vscode/
+beatstars_progress.json
