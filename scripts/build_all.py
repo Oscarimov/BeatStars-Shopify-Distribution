@@ -9,6 +9,19 @@ import subprocess
 import shutil
 from pathlib import Path
 
+# Windows consoles default to cp1252, which can't encode the emoji used
+# throughout this script's prints - force UTF-8 so it never crashes.
+if sys.platform == 'win32':
+    try:
+        os.system('chcp 65001 > nul')
+    except Exception:
+        pass
+try:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    pass
+
 def check_prerequisites():
     """Check if all requirements are met"""
     print("=" * 70)
@@ -39,15 +52,14 @@ def check_prerequisites():
             print(f"❌ {file} - NOT FOUND")
             errors.append(f"Missing file: {file}")
 
-    # config.json is gitignored (contains real secrets); config.example.json is the
-    # tracked template. Either is fine here — the build step sanitizes whichever it finds.
-    if Path('config.json').exists():
-        print(f"✅ config.json - Configuration file (local, will be sanitized for dist)")
-    elif Path('config.example.json').exists():
+    # The build always ships config.example.json (the neutral, tracked
+    # template) as the distributed config.json - never the developer's own
+    # local config.json, which accumulates real personal data over time.
+    if Path('config.example.json').exists():
         print(f"✅ config.example.json - Configuration template")
     else:
-        print(f"❌ config.json / config.example.json - NOT FOUND")
-        errors.append("Missing file: config.json or config.example.json")
+        print(f"❌ config.example.json - NOT FOUND")
+        errors.append("Missing file: config.example.json")
     
     # Check PyInstaller
     try:
@@ -224,32 +236,27 @@ def create_distribution():
         shutil.copy2(login_bat, dist_folder / login_bat.name)
         print(f"   ✓ {login_bat.name}")
 
-    # Copy config template (prefer local config.json, fall back to the tracked example)
-    config_source = Path('config.json') if Path('config.json').exists() else Path('config.example.json')
+    # Always ship the tracked, neutral template - NEVER the developer's own
+    # local config.json. That file accumulates real personal data over time
+    # (artist name, real collection name, credentials, ...) and trying to
+    # scrub it field-by-field is exactly how a real vendor name and
+    # collection name leaked into a build once already. config.example.json
+    # is deliberately kept generic for this purpose.
+    config_source = Path('config.example.json')
     if config_source.exists():
-        import json
-        with open(config_source, 'r', encoding='utf-8') as f:
-            config = json.load(f)
-
-        config['store_url'] = 'your-store.myshopify.com'
-        config['access_token'] = 'shpat_your_token_here'
-        config['client_id'] = ''
-        config['client_secret'] = ''
-        config['beats_folder'] = 'C:/Users/YourName/Documents/Beats'
-        config.setdefault('shopify_login', {})['email'] = 'email'
-        config['shopify_login']['password'] = 'mot_de_passe'
-        config.setdefault('beatstars_login', {})['email'] = 'email'
-        config['beatstars_login']['password'] = 'mot de passe'
-
-        with open(dist_folder / 'config.json', 'w', encoding='utf-8') as f:
-            json.dump(config, f, indent=2)
-        print(f"   ✓ config.json (template, sanitized from {config_source.name})")
+        shutil.copy2(config_source, dist_folder / 'config.json')
+        print(f"   ✓ config.json (template, from {config_source.name})")
+    else:
+        print(f"   ⚠️ {config_source} not found - no config.json shipped")
     
-    # Copy README files
-    for readme in ['README.md', 'README_FR.md']:
-        if Path(readme).exists():
-            shutil.copy2(readme, dist_folder / readme)
+    # Copy README files (they live at the repo root, one level up from scripts/)
+    for readme in ['README.md', 'README_EN.md']:
+        readme_path = Path('..') / readme
+        if readme_path.exists():
+            shutil.copy2(readme_path, dist_folder / readme)
             print(f"   ✓ {readme}")
+        else:
+            print(f"   ⚠️ {readme} not found at {readme_path.resolve()}")
     
     print(f"\n✅ Distribution created: {dist_folder}/")
     print(f"   Total size: ~{sum(f.stat().st_size for f in dist_folder.rglob('*') if f.is_file()) / (1024*1024):.0f} MB")
@@ -292,7 +299,7 @@ if __name__ == "__main__":
         print("   ├── login_shopify_chrome.bat       (one-time Shopify login)")
         print("   ├── config.json                    (must be edited by user)")
         print("   ├── README.md")
-        print("   └── README_FR.md")
+        print("   └── README_EN.md")
 
         print("\n👤 USER INSTRUCTIONS:")
         print("   1. Extract the entire folder (keep structure)")

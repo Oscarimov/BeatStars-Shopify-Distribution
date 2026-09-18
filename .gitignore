@@ -3,6 +3,10 @@ config.json
 scripts/config.json
 *.local.json
 
+# Session working notes — contains real store handles / personal test data,
+# kept local only for continuity between Claude Code sessions
+CLAUDE.md
+
 # Sessions & auth caches created at runtime
 shopify_session.json
 beatstars_session.json
@@ -39,6 +43,8 @@ dist/
 build/
 ms-playwright/
 *.exe
+*.spec
+scripts/BeatStars-Shopify-Complete/
 
 # OS / editor
 .DS_Store
