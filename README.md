@@ -318,14 +318,16 @@ BeatStars-Shopify-Tool/
 
 ---
 
-## 🍎 Utilisation sur Mac (guide communautaire)
+## 🍎 Utilisation sur Mac et Linux (depuis les sources)
 
-Deux guides pas-à-pas ont été rédigés par un utilisateur pour faire tourner le bot sur Mac depuis les sources :
+Les `.exe` sont réservés à Windows. Sur Mac et Linux, le bot se lance depuis les sources avec les scripts du dossier `scripts/` : `setup.sh` (installation, une fois), `login_shopify_chrome.sh` (connexion Shopify, une fois), `run_single_upload.sh` (upload d'une prod), et `setup_unrar.sh` (facultatif, extraction des `.rar`).
+
+Guides pas-à-pas pour Mac (rédigés par un utilisateur) :
 
 - 📘 [1. Installer le bot sur Mac](https://oscarimov.github.io/BeatStars-Shopify-Distribution/mac/1-installation.html)
 - 🚀 [2. Lancer le bot](https://oscarimov.github.io/BeatStars-Shopify-Distribution/mac/2-lancer-le-bot.html)
 
-> ⚠️ **Non maintenu officiellement.** Les `.exe` restent Windows uniquement. Ces guides s'appuient sur des fichiers complémentaires Mac (`setup.sh`, `login_shopify_chrome.sh`, `run_single_upload.sh`, `macos.patch`) qui **ne sont pas inclus dans ce dépôt**, et n'ont pas été testés par le mainteneur. Relisez tout script avant de l'exécuter.
+> ⚠️ **Non testé par le mainteneur** (aucune machine Mac/Linux). Prérequis : Google Chrome (pas Chromium), Python 3.9+ avec tkinter (`brew install python python-tk` sur Mac, `python3-tk` sous Linux). Le re-téléchargement automatique des MP3 manquants (option de vérification) n'est pas disponible sur Mac. Une première version des guides mentionnait un fichier `macos.patch` : il n'est pas disponible et n'est plus nécessaire, les scripts ci-dessus le remplacent.
 
 ## 🐛 Résolution des Problèmes
 

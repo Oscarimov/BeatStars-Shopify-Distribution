@@ -246,14 +246,16 @@ If your STEMS archives are in **RAR** format, you need to install UnRAR:
 
 ---
 
-## 🍎 Running on Mac (community guide)
+## 🍎 Running on Mac and Linux (from source)
 
-Two step-by-step guides (in French) were written by a user to run the bot from source on Mac:
+The `.exe` files are Windows-only. On Mac and Linux, run the bot from source with the scripts in `scripts/`: `setup.sh` (one-time install), `login_shopify_chrome.sh` (one-time Shopify login), `run_single_upload.sh` (upload one beat), and `setup_unrar.sh` (optional, `.rar` extraction).
+
+Step-by-step Mac guides (in French, written by a user):
 
 - 📘 [1. Install the bot on Mac](https://oscarimov.github.io/BeatStars-Shopify-Distribution/mac/1-installation.html)
 - 🚀 [2. Run the bot](https://oscarimov.github.io/BeatStars-Shopify-Distribution/mac/2-lancer-le-bot.html)
 
-> ⚠️ **Not officially maintained.** The `.exe` files are Windows-only. These guides rely on extra Mac files (`setup.sh`, `login_shopify_chrome.sh`, `run_single_upload.sh`, `macos.patch`) that are **not included in this repository**, and were not tested by the maintainer. Review any script before running it.
+> ⚠️ **Not tested by the maintainer** (no Mac/Linux machine available). Requirements: Google Chrome (not Chromium), Python 3.9+ with tkinter (`brew install python python-tk` on Mac, `python3-tk` on Linux). The automatic re-download of missing MP3s (verification option) is not available on Mac. An earlier version of the guides mentioned a `macos.patch` file: it is not available and no longer needed, the scripts above replace it.
 
 ## 🐛 Troubleshooting
 

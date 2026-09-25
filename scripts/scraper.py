@@ -2429,7 +2429,12 @@ class SecureBeatstarsScraper:
         if not PYAUTOGUI_AVAILABLE:
             print("   ❌ pyautogui required for MP3 download")
             return False
-        
+
+        # The keystroke sequence below drives Chrome's *Windows* context menu.
+        if platform.system() == 'Darwin':
+            print("   ❌ MP3 re-download is not supported on macOS - download this MP3 manually")
+            return False
+
         try:
             self.driver.get(beat_url)
             time.sleep(3)

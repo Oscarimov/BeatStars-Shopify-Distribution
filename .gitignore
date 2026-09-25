@@ -51,3 +51,6 @@ scripts/BeatStars-Shopify-Complete/
 Thumbs.db
 .vscode/
 beatstars_progress.json
+
+# Local copy of the previous project folder / old distributions
+/old/
