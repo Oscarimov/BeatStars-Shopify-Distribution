@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lancer le bot</title>
+<style>
+  :root{
+    --bg:#f2f8fb;
+    --card:#ffffff;
+    --ink:#1c2430;
+    --muted:#5a6472;
+    --blue:#2f6fed;
+    --blue-dark:#1f4fc0;
+    --green:#1f9d55;
+    --green-bg:#e8f8ee;
+    --red:#e0403b;
+    --red-bg:#fdeceb;
+    --yellow-bg:#fff6dd;
+    --yellow-ink:#7a5a00;
+    --blue-bg:#eaf1ff;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+    background:var(--bg);
+    color:var(--ink);
+    line-height:1.5;
+    padding:0 0 60px 0;
+  }
+  header{
+    background:linear-gradient(135deg,#2f6fed,#7a4cff);
+    color:white;
+    padding:40px 20px 50px;
+    text-align:center;
+  }
+  header .emoji{font-size:56px;}
+  header h1{font-size:28px;margin:10px 0 6px;}
+  header p{font-size:17px;opacity:.95;margin:0;}
+  main{
+    max-width:640px;
+    margin:-30px auto 0;
+    padding:0 16px;
+  }
+  .intro{
+    background:var(--card);
+    border-radius:18px;
+    padding:22px 20px;
+    box-shadow:0 6px 20px rgba(0,0,0,.08);
+    margin-bottom:24px;
+    font-size:17px;
+  }
+  .step{
+    background:var(--card);
+    border-radius:18px;
+    padding:22px 20px;
+    margin-bottom:20px;
+    box-shadow:0 6px 20px rgba(0,0,0,.08);
+  }
+  .step-head{
+    display:flex;
+    align-items:center;
+    gap:14px;
+    margin-bottom:12px;
+  }
+  .step-num{
+    flex-shrink:0;
+    width:42px;height:42px;
+    border-radius:50%;
+    background:var(--blue);
+    color:white;
+    display:flex;align-items:center;justify-content:center;
+    font-weight:700;
+    font-size:19px;
+  }
+  .step-title{
+    font-size:19px;
+    font-weight:700;
+    margin:0;
+  }
+  .step p{font-size:16px;margin:8px 0;}
+  .code{
+    display:block;
+    background:#1e1e2a;
+    color:#8ee6a1;
+    font-family:"SF Mono",Menlo,monospace;
+    font-size:14.5px;
+    padding:14px 16px;
+    border-radius:10px;
+    overflow-x:auto;
+    margin:10px 0;
+    white-space:pre-wrap;
+    word-break:break-word;
+  }
+  .box{
+    border-radius:12px;
+    padding:14px 16px;
+    margin:12px 0;
+    font-size:15.5px;
+  }
+  .box b{display:block;margin-bottom:4px;}
+  .box-green{background:var(--green-bg);color:#0e5c30;}
+  .box-yellow{background:var(--yellow-bg);color:var(--yellow-ink);}
+  .box-red{background:var(--red-bg);color:#8c211d;}
+  .box-blue{background:var(--blue-bg);color:#1a3f8c;}
+  .kbd{
+    background:#e9edf5;
+    border:1px solid #cfd8e6;
+    border-radius:6px;
+    padding:1px 7px;
+    font-family:monospace;
+    font-size:14px;
+  }
+  table{
+    width:100%;
+    border-collapse:collapse;
+    font-size:14.5px;
+    margin-top:10px;
+  }
+  td{
+    padding:10px;
+    border-bottom:1px solid #eee;
+    vertical-align:top;
+  }
+  td:first-child{font-weight:700;white-space:nowrap;color:var(--red);}
+  .footer{
+    max-width:640px;
+    margin:30px auto 0;
+    padding:0 16px;
+    text-align:center;
+    color:var(--muted);
+    font-size:14px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="emoji">🚀</div>
+  <h1>Lancer le bot</h1>
+  <p>Pour envoyer une nouvelle prod sur Shopify</p>
+</header>
+
+<main>
+
+  <div class="intro">
+    👋 Ce document sert à chaque fois que tu veux mettre une prod en ligne.
+    <br><br>
+    Avant de commencer, prépare tes fichiers : la <b>cover</b> (image), le <b>MP3</b>, et si tu en as, le <b>WAV</b> et les <b>stems</b> (fichier <span class="kbd">.zip</span> ou <span class="kbd">.rar</span>).
+    <br><br>
+    ⏱️ Ça prend 3 à 5 minutes.
+  </div>
+
+  <div class="step">
+    <div class="step-head">
+      <div class="step-num">1</div>
+      <h2 class="step-title">Ferme Chrome</h2>
+    </div>
+    <p>Appuie sur <span class="kbd">Cmd</span> + <span class="kbd">Q</span>. Si Chrome reste ouvert, le bot ne peut pas fonctionner.</p>
+  </div>
+
+  <div class="step">
+    <div class="step-head">
+      <div class="step-num">2</div>
+      <h2 class="step-title">Ouvre le Terminal</h2>
+    </div>
+    <p>Appuie sur <span class="kbd">Cmd</span> + <span class="kbd">Espace</span>, tape <b>Terminal</b>, puis <span class="kbd">Entrée</span>.</p>
+  </div>
+
+  <div class="step">
+    <div class="step-head">
+      <div class="step-num">3</div>
+      <h2 class="step-title">Va dans le dossier du bot</h2>
+    </div>
+    <p>Tape <span class="kbd">cd</span> puis une <b>espace</b> (sans appuyer sur Entrée). Glisse le dossier <b>scripts</b> depuis le Finder dans la fenêtre du Terminal. Appuie sur <span class="kbd">Entrée</span>.</p>
+    <div class="box box-green"><b>✅ Tu sais que c'est bon quand</b> la ligne se termine par <span class="kbd">scripts %</span></div>
+  </div>
+
+  <div class="step">
+    <div class="step-head">
+      <div class="step-num">4</div>
+      <h2 class="step-title">Lance le bot</h2>
+    </div>
+    <p>Colle cette ligne, puis <span class="kbd">Entrée</span> :</p>
+    <div class="code">bash run_single_upload.sh</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head">
+      <div class="step-num">5</div>
+      <h2 class="step-title">Choisis tes fichiers</h2>
+    </div>
+    <p>Des fenêtres s'ouvrent l'une après l'autre. Clique sur chaque fichier demandé, dans cet ordre :</p>
+    <ol>
+      <li>La <b>cover</b></li>
+      <li>Le <b>MP3</b></li>
+      <li>Le <b>WAV</b> — clique <b>Annuler</b> si tu n'en as pas</li>
+      <li>Les <b>stems</b> — clique <b>Annuler</b> si tu n'en as pas</li>
+    </ol>
+    <p>Puis tape le <b>nom</b> de la prod, le <b>BPM</b>, et les <b>tags</b> séparés par des virgules.</p>
+    <div class="box box-yellow"><b>👀 Tu ne vois pas les fenêtres ?</b> Regarde derrière le Terminal, ou dans le Dock en bas de l'écran.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head">
+      <div class="step-num">6</div>
+      <h2 class="step-title">Attends</h2>
+    </div>
+    <p>Le bot travaille tout seul. Ne ferme ni le Terminal, ni Chrome. Ça prend quelques minutes.</p>
+    <div class="box box-blue"><b>🔑 macOS te demande un mot de passe ?</b> C'est normal, entre-le et clique sur <b>"Toujours autoriser"</b>.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head">
+      <div class="step-num">7</div>
+      <h2 class="step-title">C'est fini !</h2>
+    </div>
+    <p>Tu dois voir apparaître dans le Terminal :</p>
+    <div class="code">✅ Beat 1: SUCCESS - (le nom de ta prod)
+Script terminé — FIN</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head">
+      <div class="step-num">8</div>
+      <h2 class="step-title">Vérifie dans Shopify</h2>
+    </div>
+    <p>Ouvre ta boutique, va dans <b>Produits</b>, et regarde ta prod : le titre, les tags, le BPM, la cover, les licences.</p>
+    <div class="box box-red"><b>⚠️ Attention</b> : la prod est mise en ligne tout de suite, elle est visible par tes clients. Si c'est juste un test, supprime-la après.</div>
+  </div>
+
+  <div class="box box-green" style="max-width:640px;margin:30px auto;">
+    <b>🎉 Bravo !</b> Ta prod est en ligne. Refais ces 8 étapes à chaque nouvelle prod.
+  </div>
+
+  <div class="step">
+    <div class="step-head">
+      <div class="step-num">🆘</div>
+      <h2 class="step-title">Si Shopify redemande de se connecter</h2>
+    </div>
+    <p>Ça arrive parfois. Voici quoi faire :</p>
+    <ol>
+      <li>Dans le Terminal, appuie sur <span class="kbd">Ctrl</span> + <span class="kbd">C</span></li>
+      <li>Ferme Chrome (<span class="kbd">Cmd</span> + <span class="kbd">Q</span>)</li>
+      <li>Colle cette ligne dans le Terminal :</li>
+    </ol>
+    <div class="code">"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --user-data-dir="$PWD/chrome_profile" "https://admin.shopify.com"</div>
+    <ol start="4">
+      <li>Connecte-toi à Shopify dans cette fenêtre</li>
+      <li>Ferme Chrome (<span class="kbd">Cmd</span> + <span class="kbd">Q</span>)</li>
+      <li>Relance le bot depuis l'étape 4</li>
+    </ol>
+  </div>
+
+  <div class="step">
+    <div class="step-head">
+      <div class="step-num">💡</div>
+      <h2 class="step-title">Petits soucis fréquents</h2>
+    </div>
+    <table>
+      <tr><td>Erreur "no such file"</td><td>Tu n'es pas dans le bon dossier. Refais l'étape 3.</td></tr>
+      <tr><td>Le bot redemande de se connecter</td><td>Va voir juste au-dessus, section "Si Shopify redemande de se connecter".</td></tr>
+      <tr><td>Une prod refuse de se créer</td><td>Une prod avec le même nom existe peut-être déjà sur Shopify.</td></tr>
+      <tr><td>Autre erreur en rouge</td><td>Copie le texte affiché et montre-le à la personne qui t'a aidé à installer.</td></tr>
+    </table>
+  </div>
+
+</main>
+
+<div class="footer">
+  Ne partage jamais ton fichier <b>config.json</b> ni le dossier <b>chrome_profile</b> avec personne.
+</div>
+
+</body>
+</html>

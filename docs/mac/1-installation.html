@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Installer le bot sur Mac</title>
+<style>
+  :root{
+    --bg:#fdf6ec;
+    --card:#ffffff;
+    --ink:#2b2118;
+    --muted:#6b5d4f;
+    --orange:#ff7a1a;
+    --orange-dark:#d9600a;
+    --green:#1f9d55;
+    --green-bg:#e8f8ee;
+    --red:#e0403b;
+    --red-bg:#fdeceb;
+    --blue:#2f6fed;
+    --blue-bg:#eaf1ff;
+    --yellow-bg:#fff6dd;
+    --yellow-ink:#7a5a00;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+    background:var(--bg);
+    color:var(--ink);
+    line-height:1.5;
+    padding:0 0 60px 0;
+  }
+  header{
+    background:linear-gradient(135deg,#ff7a1a,#ff4d6d);
+    color:white;
+    padding:40px 20px 50px;
+    text-align:center;
+  }
+  header .emoji{font-size:56px;}
+  header h1{font-size:28px;margin:10px 0 6px;}
+  header p{font-size:17px;opacity:.95;margin:0;}
+  main{
+    max-width:640px;
+    margin:-30px auto 0;
+    padding:0 16px;
+  }
+  .intro{
+    background:var(--card);
+    border-radius:18px;
+    padding:22px 20px;
+    box-shadow:0 6px 20px rgba(0,0,0,.08);
+    margin-bottom:24px;
+    font-size:17px;
+  }
+  .step{
+    background:var(--card);
+    border-radius:18px;
+    padding:22px 20px;
+    margin-bottom:20px;
+    box-shadow:0 6px 20px rgba(0,0,0,.08);
+  }
+  .step-head{
+    display:flex;
+    align-items:center;
+    gap:14px;
+    margin-bottom:12px;
+  }
+  .step-num{
+    flex-shrink:0;
+    width:42px;height:42px;
+    border-radius:50%;
+    background:var(--orange);
+    color:white;
+    display:flex;align-items:center;justify-content:center;
+    font-weight:700;
+    font-size:19px;
+  }
+  .step-title{
+    font-size:19px;
+    font-weight:700;
+    margin:0;
+  }
+  .step p{font-size:16px;margin:8px 0;}
+  code, .code{
+    display:block;
+    background:#1e1e2a;
+    color:#8ee6a1;
+    font-family:"SF Mono",Menlo,monospace;
+    font-size:14.5px;
+    padding:14px 16px;
+    border-radius:10px;
+    overflow-x:auto;
+    margin:10px 0;
+    white-space:pre-wrap;
+    word-break:break-word;
+  }
+  .box{
+    border-radius:12px;
+    padding:14px 16px;
+    margin:12px 0;
+    font-size:15.5px;
+  }
+  .box b{display:block;margin-bottom:4px;}
+  .box-green{background:var(--green-bg);color:#0e5c30;}
+  .box-yellow{background:var(--yellow-bg);color:var(--yellow-ink);}
+  .box-red{background:var(--red-bg);color:#8c211d;}
+  .box-blue{background:var(--blue-bg);color:#1a3f8c;}
+  .divider{
+    text-align:center;
+    color:var(--muted);
+    font-size:14px;
+    margin:30px 0 10px;
+  }
+  .kbd{
+    background:#efe7db;
+    border:1px solid #d8cdba;
+    border-radius:6px;
+    padding:1px 7px;
+    font-family:monospace;
+    font-size:14px;
+  }
+  .footer{
+    max-width:640px;
+    margin:30px auto 0;
+    padding:0 16px;
+    text-align:center;
+    color:var(--muted);
+    font-size:14px;
+  }
+  .badge{
+    display:inline-block;
+    background:var(--orange);
+    color:white;
+    font-size:13px;
+    font-weight:700;
+    padding:4px 10px;
+    border-radius:999px;
+    margin-bottom:8px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="emoji">🎛️</div>
+  <h1>Installer le bot d'upload sur Mac</h1>
+  <p>Une seule fois. Après, tu ne refais plus jamais ça.</p>
+</header>
+
+<main>
+
+  <div class="intro">
+    👋 Ce guide t'explique, étape par étape, comment mettre en route le bot qui envoie automatiquement tes prods sur ta boutique Shopify — même s'il n'était fait que pour Windows au départ.
+    <br><br>
+    Prends ton temps. Fais les étapes <b>dans l'ordre</b>, une par une. Tu n'as pas besoin de comprendre le "pourquoi", juste de suivre.
+    <br><br>
+    ⏱️ Ça prend environ <b>1h30 à 3h</b> la première fois.
+  </div>
+
+  <div class="step">
+    <div class="step-head">
+      <div class="step-num">1</div>
+      <h2 class="step-title">Vérifie que tu as Chrome</h2>
+    </div>
+    <p>Ouvre le dossier <b>Applications</b> sur ton Mac. Si <b>Google Chrome</b> n'y est pas, télécharge-le ici :</p>
+    <div class="box box-blue"><b>🔗 À faire :</b> google.com/chrome</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head">
+      <div class="step-num">2</div>
+      <h2 class="step-title">Ouvre le Terminal</h2>
+    </div>
+    <p>C'est une appli déjà installée sur ton Mac, avec un fond noir.</p>
+    <div class="box box-blue"><b>👉 Comment faire :</b> appuie sur <span class="kbd">Cmd</span> + <span class="kbd">Espace</span>, tape <b>Terminal</b>, puis appuie sur <span class="kbd">Entrée</span>.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head">
+      <div class="step-num">3</div>
+      <h2 class="step-title">Installe les outils de base</h2>
+    </div>
+    <p>Copie cette ligne, colle-la dans le Terminal, puis appuie sur <span class="kbd">Entrée</span> :</p>
+    <div class="code">brew --version</div>
+    <p>Si un numéro de version s'affiche → passe direct à l'étape 4.<br>
+    Si tu vois <b>"command not found"</b> → va sur <b>brew.sh</b> et suis leurs instructions, puis reviens ici.</p>
+  </div>
+
+  <div class="step">
+    <div class="step-head">
+      <div class="step-num">4</div>
+      <h2 class="step-title">Installe Python</h2>
+    </div>
+    <p>Copie-colle cette ligne dans le Terminal, puis <span class="kbd">Entrée</span> :</p>
+    <div class="code">brew install python python-tk</div>
+    <div class="box box-yellow"><b>⏳ Patiente</b> : ça peut prendre 5 à 10 minutes. Beaucoup de texte défile, c'est normal.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head">
+      <div class="step-num">5</div>
+      <h2 class="step-title">Crée un compte Shopify pour le bot</h2>
+    </div>
+    <p>C'est comme donner une clé au bot pour qu'il puisse parler à ta boutique.</p>
+    <ol>
+      <li>Va sur <b>dev.shopify.com/dashboard</b></li>
+      <li><b>Apps</b> → <b>Create app</b> → <b>Start from Dev Dashboard</b></li>
+      <li>Nom : <b>Beat Uploader</b></li>
+      <li>App URL : <span class="kbd">https://shopify.dev/apps/default-app-home</span></li>
+      <li>Allowed redirection URL(s) : <span class="kbd">https://localhost</span></li>
+    </ol>
+    <p>Dans <b>Scopes</b> (pas "Optional scopes"), colle exactement ceci :</p>
+    <div class="code">write_products,read_products,write_files,read_files,write_metaobject_definitions,read_metaobject_definitions,write_metaobjects,read_metaobjects,write_publications,read_publications</div>
+    <p>Puis clique <b>Release</b> → <b>Home</b> → <b>Install app</b> → choisis ta boutique → <b>Install</b>.</p>
+    <p>Retourne dans <b>Settings</b> : tu vois un <b>Client ID</b> et un <b>Secret</b>. Laisse cet onglet ouvert.</p>
+    <div class="box box-red"><b>🔒 Important</b> : le Secret, c'est comme un mot de passe. Ne le montre à personne, ne le colle nulle part sauf là où ce guide te le demande.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head">
+      <div class="step-num">6</div>
+      <h2 class="step-title">Télécharge le bot</h2>
+    </div>
+    <p>Va sur cette page, clique sur le bouton vert <b>Code</b>, puis <b>Download ZIP</b> :</p>
+    <div class="box box-blue">🔗 github.com/Oscarimov/BeatStars-Shopify-Distribution</div>
+    <p>Décompresse le fichier (double-clic dessus). Tu obtiens un dossier avec, à l'intérieur, un autre dossier appelé <b>scripts</b>.</p>
+  </div>
+
+  <div class="step">
+    <div class="step-head">
+      <div class="step-num">7</div>
+      <h2 class="step-title">Ajoute les fichiers spéciaux Mac</h2>
+    </div>
+    <p>Dans le dossier <b>fichiers_a_copier_dans_scripts</b> qu'on t'a envoyé, il y a 4 fichiers. Mets-les dans le dossier <b>scripts</b> du bot (celui de l'étape 6).</p>
+    <div class="box box-green"><b>✅ Résultat attendu</b> : le dossier <b>scripts</b> contient maintenant, en plus des fichiers du bot, : <b>setup.sh</b>, <b>login_shopify_chrome.sh</b>, <b>run_single_upload.sh</b> et <b>macos.patch</b>.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head">
+      <div class="step-num">8</div>
+      <h2 class="step-title">Va dans le dossier avec le Terminal</h2>
+    </div>
+    <p>Dans le Terminal, tape <span class="kbd">cd</span> puis une <b>espace</b> (sans appuyer sur Entrée). Ensuite, glisse le dossier <b>scripts</b> depuis le Finder directement dans la fenêtre du Terminal. Le chemin s'écrit tout seul. Appuie sur <span class="kbd">Entrée</span>.</p>
+    <div class="box box-green"><b>✅ Tu sais que c'est bon quand</b> la ligne se termine par <span class="kbd">scripts %</span></div>
+  </div>
+
+  <div class="step">
+    <div class="step-head">
+      <div class="step-num">9</div>
+      <h2 class="step-title">Applique le correctif Mac</h2>
+    </div>
+    <p>Toujours dans le Terminal, colle cette ligne, puis <span class="kbd">Entrée</span> :</p>
+    <div class="code">cd ..
+git apply scripts/macos.patch
+cd scripts</div>
+    <p>Rien ne s'affiche si ça marche : c'est normal.</p>
+  </div>
+
+  <div class="step">
+    <div class="step-head">
+      <div class="step-num">10</div>
+      <h2 class="step-title">Installe le bot</h2>
+    </div>
+    <p>Colle cette ligne, puis <span class="kbd">Entrée</span> :</p>
+    <div class="code">PATH="/opt/homebrew/bin:$PATH" bash setup.sh</div>
+    <div class="box box-yellow"><b>⏳ Patiente</b> quelques minutes. Attends de voir la ligne : <b>"Installation terminée"</b>.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head">
+      <div class="step-num">11</div>
+      <h2 class="step-title">Donne ses infos au bot</h2>
+    </div>
+    <p>Colle cette ligne, puis <span class="kbd">Entrée</span> :</p>
+    <div class="code">cp config.example.json config.json
+open -e config.json</div>
+    <p>Un fichier s'ouvre. Change <b>seulement</b> ces 4 lignes (garde les guillemets <code style="display:inline;padding:0 4px;">" "</code> et la virgule à la fin) :</p>
+    <ul>
+      <li><b>store_url</b> → le nom de ta boutique suivi de <span class="kbd">.myshopify.com</span></li>
+      <li><b>client_id</b> → celui de l'étape 5</li>
+      <li><b>client_secret</b> → celui de l'étape 5 (remplace tout, y compris le début)</li>
+      <li><b>collection_id</b> → voir encadré ci-dessous</li>
+    </ul>
+    <div class="box box-blue"><b>📂 Trouver le collection_id</b> : dans Shopify, va dans <b>Produits</b> → <b>Collections</b> → ouvre la collection où tu ranges tes prods (ou crée-en une). L'adresse se termine par un numéro. Écris : <span class="kbd">gid://shopify/Collection/LENUMERO</span></div>
+    <p>Enregistre avec <span class="kbd">Cmd</span> + <span class="kbd">S</span>.</p>
+  </div>
+
+  <div class="step">
+    <div class="step-head">
+      <div class="step-num">12</div>
+      <h2 class="step-title">Connecte-toi à Shopify (une seule fois)</h2>
+    </div>
+    <p>Ferme Chrome (<span class="kbd">Cmd</span> + <span class="kbd">Q</span>). Puis colle cette ligne dans le Terminal :</p>
+    <div class="code">"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --user-data-dir="$PWD/chrome_profile" "https://admin.shopify.com"</div>
+    <p>Une fenêtre Chrome toute neuve s'ouvre. Connecte-toi à Shopify comme d'habitude, jusqu'à voir ton tableau de bord.</p>
+    <p>Dans cette fenêtre, tape dans la barre d'adresse : <span class="kbd">chrome://settings/onStartup</span> et choisis <b>"Reprendre là où vous en étiez"</b>.</p>
+    <p>Ferme Chrome avec <span class="kbd">Cmd</span> + <span class="kbd">Q</span>.</p>
+  </div>
+
+  <div class="box box-green" style="max-width:640px;margin:30px auto;">
+    <b>🎉 C'est fini !</b> L'installation est terminée. Passe maintenant au document <b>"2 - Lancer le bot"</b> pour envoyer ta première prod.
+  </div>
+
+</main>
+
+<div class="footer">
+  Un souci en cours de route ? Note le message exact affiché dans le Terminal et montre-le à la personne qui t'aide.<br>
+  Ne partage jamais ton fichier <b>config.json</b> avec personne.
+</div>
+
+</body>
+</html>

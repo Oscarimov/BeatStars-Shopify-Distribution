@@ -318,6 +318,15 @@ BeatStars-Shopify-Tool/
 
 ---
 
+## 🍎 Utilisation sur Mac (guide communautaire)
+
+Deux guides pas-à-pas ont été rédigés par un utilisateur pour faire tourner le bot sur Mac depuis les sources :
+
+- 📘 [1. Installer le bot sur Mac](https://oscarimov.github.io/BeatStars-Shopify-Distribution/mac/1-installation.html)
+- 🚀 [2. Lancer le bot](https://oscarimov.github.io/BeatStars-Shopify-Distribution/mac/2-lancer-le-bot.html)
+
+> ⚠️ **Non maintenu officiellement.** Les `.exe` restent Windows uniquement. Ces guides s'appuient sur des fichiers complémentaires Mac (`setup.sh`, `login_shopify_chrome.sh`, `run_single_upload.sh`, `macos.patch`) qui **ne sont pas inclus dans ce dépôt**, et n'ont pas été testés par le mainteneur. Relisez tout script avant de l'exécuter.
+
 ## 🐛 Résolution des Problèmes
 
 ### ❌ "Chrome driver error" ou "Chrome not found"
